@@ -379,19 +379,6 @@ function sign([string]$path, [string]$what) {
     run_tool $signtool $arguments "$signtool sign /fd sha256 /tr $stamp /td sha256 /f *** /p *** $path"
 }
 
-# One call into the Windows Installer automation, with a name on it.
-#
-# WHY THIS EXISTS: these calls go through `InvokeMember`, and when one of them hands back nothing
-# the next line says "You cannot call a method on a null-valued expression" — without naming the
-# call, the file or the mode. That sentence cost a release build: the MSI and both transforms were
-# signed, and the check behind them failed with nothing anybody could act on.
-function com_call([object]$target, [string]$member, [object[]]$arguments, [string]$what) {
-    if ($null -eq $target) {
-        throw "$what could not be done: the object it needed does not exist. A call before this one handed back nothing."
-    }
-    return $target.GetType().InvokeMember($member, 'InvokeMethod', $null, $target, $arguments)
-}
-
 # The MSI file table — the only reliable list of what gets installed. A text search in the raw
 # image would not find the names inside the embedded cabinet file.
 function files_in_msi([string]$msi) {
@@ -401,11 +388,16 @@ function files_in_msi([string]$msi) {
     $names = @()
     try {
         $wi = New-Object -ComObject WindowsInstaller.Installer
-        $db = com_call $wi 'OpenDatabase' @($msi, 0) "opening $msi for reading"
-        $view = com_call $db 'OpenView' @('SELECT `FileName` FROM `File`') "reading the file table of $msi"
-        com_call $view 'Execute' $null "reading the file table of $msi" | Out-Null
+        # Inline, not through a helper: a COM object handed to a typed parameter is no longer the
+        # same call, and a helper that looked harmless emptied this very table (measured — the file
+        # table went from two entries to none). The null checks say which call failed instead.
+        $db = $wi.GetType().InvokeMember('OpenDatabase', 'InvokeMethod', $null, $wi, @($msi, 0))
+        if ($null -eq $db) { throw "Opening $msi for reading handed back nothing." }
+        $view = $db.GetType().InvokeMember('OpenView', 'InvokeMethod', $null, $db, @('SELECT `FileName` FROM `File`'))
+        if ($null -eq $view) { throw "The file table of $msi could not be opened for reading." }
+        $view.GetType().InvokeMember('Execute', 'InvokeMethod', $null, $view, $null)
         while ($true) {
-            $set = com_call $view 'Fetch' $null "reading the file table of $msi"
+            $set = $view.GetType().InvokeMember('Fetch', 'InvokeMethod', $null, $view, $null)
             if ($null -eq $set) { break }
             $names += $set.GetType().InvokeMember('StringData', 'GetProperty', $null, $set, @(1))
             [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($set)
@@ -450,18 +442,20 @@ function properties_of_msi([string]$msi, [string]$transform) {
         # Mode 1 is transact, because a read-only database takes no transform. Nothing is
         # committed; the copy goes away in the finally.
         $mode = if ($transform) { 1 } else { 0 }
-        $what = if ($transform) { "opening a copy of $(Split-Path -Leaf $msi) so that $(Split-Path -Leaf $transform) can be applied to it" } else { "reading the properties of $(Split-Path -Leaf $msi)" }
-        $db = com_call $wi 'OpenDatabase' @($source, $mode) $what
+        $what = if ($transform) { "opening a copy of $(Split-Path -Leaf $msi) so that $(Split-Path -Leaf $transform) could be applied to it" } else { "reading the properties of $(Split-Path -Leaf $msi)" }
+        $db = $wi.GetType().InvokeMember('OpenDatabase', 'InvokeMethod', $null, $wi, @($source, $mode))
+        if ($null -eq $db) { throw "$what handed back nothing." }
         if ($transform) {
             # The second argument suppresses error conditions, and 0 suppresses none: a transform
             # that does not fit this MSI has to fail here, in the build, and not at the customer as
             # »1624 Error applying transforms«.
-            com_call $db 'ApplyTransform' @($transform, 0) "applying $(Split-Path -Leaf $transform)" | Out-Null
+            $db.GetType().InvokeMember('ApplyTransform', 'InvokeMethod', $null, $db, @($transform, 0))
         }
-        $view = com_call $db 'OpenView' @('SELECT `Property`, `Value` FROM `Property`') $what
-        com_call $view 'Execute' $null $what | Out-Null
+        $view = $db.GetType().InvokeMember('OpenView', 'InvokeMethod', $null, $db, @('SELECT `Property`, `Value` FROM `Property`'))
+        if ($null -eq $view) { throw "$what did not work: the property table could not be opened." }
+        $view.GetType().InvokeMember('Execute', 'InvokeMethod', $null, $view, $null)
         while ($true) {
-            $set = com_call $view 'Fetch' $null $what
+            $set = $view.GetType().InvokeMember('Fetch', 'InvokeMethod', $null, $view, $null)
             if ($null -eq $set) { break }
             $name = $set.GetType().InvokeMember('StringData', 'GetProperty', $null, $set, @(1))
             $properties[$name] = $set.GetType().InvokeMember('StringData', 'GetProperty', $null, $set, @(2))
@@ -699,7 +693,11 @@ function task_verify {
         throw "In $PackageDir there are $($transforms.Count) transforms, but $($Cultures.Count) languages are set ($($Cultures -join ', ')), which makes $($Cultures.Count - 1). A transform too many belongs to another version and fits nothing; one too few is a language that silently does not go out."
     }
 
-    $names = files_in_msi $msi
+    # `@(...)` and not the bare call: a PowerShell function that returns an array of nought or one
+    # hands back something that is not an array, and `.Count` on it throws "The property 'Count'
+    # cannot be found" instead of the sentence below (measured under StrictMode here, for both the
+    # empty and the single case). A one-file MSI would have failed that way, and unreadably.
+    $names = @(files_in_msi $msi)
     if ($names.Count -eq 0) {
         throw "The file table of $msi is empty; this check would have read nothing and would have been green and worthless."
     }
@@ -749,7 +747,7 @@ function task_verify {
         # can try it. If it refuses, it refuses loudly here and not at the customer, and the
         # decision to send the transform out unsigned is then one a person takes (README.md,
         # section "Where rework is most likely").
-        foreach ($artefact in package_artefacts $full) {
+        foreach ($artefact in @(package_artefacts $full)) {
             run_tool $signtool @('verify', '/pa', '/v', $artefact)
         }
         run_tool $signtool @('verify', '/pa', '/v', $ExeFile)
@@ -793,7 +791,7 @@ function task_build {
     task_msi
     # One loop over everything the packing produced, not one call per language: whoever adds a
     # language to $Cultures may not have to remember the signing as a second place.
-    foreach ($artefact in package_artefacts $full) {
+    foreach ($artefact in @(package_artefacts $full)) {
         sign $artefact (Split-Path -Leaf $artefact)
     }
     task_verify

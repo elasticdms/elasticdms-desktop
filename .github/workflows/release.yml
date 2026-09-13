@@ -531,7 +531,10 @@ jobs:
             Sort-Object FullName -Descending | Select-Object -First 1
           if (-not $st) { throw 'No signtool.exe is to be found on this image; without it nothing can be signed.' }
           "SIGNTOOL=$($st.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-          & $st.FullName 2>&1 | Select-Object -First 2
+          # The version, not the tool: calling signtool without arguments makes it print
+          # "SignTool Error: A required parameter is missing" into a log where a reader hunting a
+          # real failure finds it first. The file version says the same thing and says nothing else.
+          "signtool $((Get-Item $st.FullName).VersionInfo.FileVersion) from $(Split-Path -Parent $st.FullName)"
 
       - name: Build the MSI
         run: |
@@ -755,13 +758,37 @@ jobs:
           TAG: ${{ github.ref_name }}
         run: |
           set -euo pipefail
-          # --draft: a human sees the artefacts before the customer does.
-          # --verify-tag: without the tag in the repository, abort rather than invent one.
-          # --generate-notes appends the generated list of changes below our own text.
-          gh release create "$TAG" \
-            --draft \
-            --verify-tag \
-            --title "elasticdms folder client $TAG" \
-            --notes-file release-notes.md \
-            --generate-notes \
-            artifacts/*.pkg artifacts/*.msi artifacts/*.mst artifacts/SHA256SUMS
+          files=(artifacts/*.pkg artifacts/*.msi artifacts/*.mst artifacts/SHA256SUMS)
+          # A release under this tag may already stand there — somebody opened it in the web
+          # interface before pushing the tag, or an earlier run of this workflow got as far as
+          # creating it and no further. `gh release create` fails on that ("release already
+          # exists"), and the packages stay on the run where nobody looks for them. That is exactly
+          # how v0.1.0 came to be published with no files attached.
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            printf 'A release %s already exists; its notes are rewritten and the artefacts are uploaded to it.\n' "$TAG"
+            gh release edit "$TAG" \
+              --title "elasticdms folder client $TAG" \
+              --notes-file release-notes.md
+            # --clobber: a re-run replaces its own artefacts instead of stopping at the first one
+            # that is already there.
+            gh release upload "$TAG" "${files[@]}" --clobber
+          else
+            # --draft: a human sees the artefacts before the customer does.
+            # --verify-tag: without the tag in the repository, abort rather than invent one.
+            # --generate-notes appends the generated list of changes below our own text.
+            gh release create "$TAG" \
+              --draft \
+              --verify-tag \
+              --title "elasticdms folder client $TAG" \
+              --notes-file release-notes.md \
+              --generate-notes \
+              "${files[@]}"
+          fi
+          # Whatever path was taken, the release must now carry files. A release that says a
+          # version and holds nothing is worse than no release: it looks finished.
+          attached="$(gh release view "$TAG" --json assets --jq '.assets | length')"
+          if [ "$attached" -lt 4 ]; then
+            printf 'The release %s carries only %s file(s); expected the two packages, the transform and SHA256SUMS.\n' "$TAG" "$attached" >&2
+            exit 1
+          fi
+          printf 'Release %s carries %s files.\n' "$TAG" "$attached"
