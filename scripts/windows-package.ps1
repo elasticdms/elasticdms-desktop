@@ -395,7 +395,11 @@ function files_in_msi([string]$msi) {
         if ($null -eq $db) { throw "Opening $msi for reading handed back nothing." }
         $view = $db.GetType().InvokeMember('OpenView', 'InvokeMethod', $null, $db, @('SELECT `FileName` FROM `File`'))
         if ($null -eq $view) { throw "The file table of $msi could not be opened for reading." }
-        $view.GetType().InvokeMember('Execute', 'InvokeMethod', $null, $view, $null)
+        # `| Out-Null`, and this is not decoration: an `InvokeMember` whose value nobody takes
+        # writes that value into the function's output stream, and a PowerShell function returns
+        # its whole output stream. Without it `Execute` put one object in front of the file names
+        # — which is why this check reported "2 file(s)" for an MSI that installs exactly one.
+        $view.GetType().InvokeMember('Execute', 'InvokeMethod', $null, $view, $null) | Out-Null
         while ($true) {
             $set = $view.GetType().InvokeMember('Fetch', 'InvokeMethod', $null, $view, $null)
             if ($null -eq $set) { break }
@@ -449,11 +453,11 @@ function properties_of_msi([string]$msi, [string]$transform) {
             # The second argument suppresses error conditions, and 0 suppresses none: a transform
             # that does not fit this MSI has to fail here, in the build, and not at the customer as
             # »1624 Error applying transforms«.
-            $db.GetType().InvokeMember('ApplyTransform', 'InvokeMethod', $null, $db, @($transform, 0))
+            $db.GetType().InvokeMember('ApplyTransform', 'InvokeMethod', $null, $db, @($transform, 0)) | Out-Null
         }
         $view = $db.GetType().InvokeMember('OpenView', 'InvokeMethod', $null, $db, @('SELECT `Property`, `Value` FROM `Property`'))
         if ($null -eq $view) { throw "$what did not work: the property table could not be opened." }
-        $view.GetType().InvokeMember('Execute', 'InvokeMethod', $null, $view, $null)
+        $view.GetType().InvokeMember('Execute', 'InvokeMethod', $null, $view, $null) | Out-Null
         while ($true) {
             $set = $view.GetType().InvokeMember('Fetch', 'InvokeMethod', $null, $view, $null)
             if ($null -eq $set) { break }
@@ -708,7 +712,7 @@ function task_verify {
     if (-not ($names | Where-Object { $_ -match 'elasticdms\.exe' })) {
         throw 'The MSI holds no elasticdms.exe; something other than the client was packed.'
     }
-    hint "File table: $($names.Count) file(s), among them elasticdms.exe and no mock."
+    hint "File table: $($names.Count) file(s) — $($names -join ', ') — and no mock."
 
     # Every transform against the MSI it belongs to. A transform is a promise about a file it does
     # not contain; the only honest check applies it and looks at what came out.
