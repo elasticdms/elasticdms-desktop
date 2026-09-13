@@ -136,11 +136,17 @@ base64 -i elasticdms-app.p12 | tr -d '\n' | pbcopy
 | `APPLE_API_KEY_P8` | App Store Connect API key (`AuthKey_*.p8`) | No notarisation, no stapled ticket |
 | `APPLE_API_KEY_ID` | The key's identifier (10 characters) | — |
 | `APPLE_API_ISSUER` | The team's issuer ID (a UUID) | — |
-| `WINDOWS_PFX` | The Authenticode certificate as a `.pfx` | `.exe` and `.msi` stay unsigned; SmartScreen warns |
-| `WINDOWS_PFX_PASSWORD` | The password of that `.pfx` | — |
+| `AZURE_CLIENT_ID` | The application that may sign, in Entra | `.exe`, `.msi` and the transform stay unsigned; SmartScreen warns |
+| `AZURE_TENANT_ID` | Its directory | — |
+| `AZURE_SUBSCRIPTION_ID` | The subscription holding the signing account | — |
 
-All nine belong in the environment `sign`, not in the repository secrets. The jobs `macos` and
-`windows` request them with `environment: sign`; no other job sees them.
+and three variables, which are no secret because they name nothing that could be used without the
+three above: `SIGNING_ENDPOINT`, `SIGNING_ACCOUNT` and `SIGNING_PROFILE`.
+
+All of them belong in the environment `signing`, not in the repository secrets. The jobs `macos`
+and `windows` request them with `environment: signing`; no other job sees them. Windows holds no
+certificate at all: the runner logs in to Azure over OIDC, and the private key never leaves the
+service.
 
 On macOS signing happens only when **both** Apple certificates are there. A signed app inside an
 unsigned package helps nobody: the notarisation service accepts only signed flat packages, and
@@ -186,9 +192,10 @@ For our own managed devices a certificate from **our own enterprise CA** (AD CS)
 key usage “Code Signing” is enough: the devices trust the root anyway, and GPO distribution runs in
 the system context. A publicly trusted certificate (against SmartScreen) is a different case — since
 the CA/Browser Forum's requirements of 2023 its private keys lie on hardware (a token or a cloud
-HSM), and then there is **no `.pfx` file any more** that could be deposited; the workflow would need
-a signing service instead. *From the documentation, not measured.* As long as that is not decided,
-`WINDOWS_PFX` stays empty and the MSI is unsigned.
+HSM), and then there is **no `.pfx` file any more** that could be deposited. That is why Windows
+signs over Azure Artifact Signing: the key stays in the service, the runner proves who it is over
+OIDC, and the certificate it gets is valid for 72 hours — which is why the timestamp is not
+optional there but the thing that makes the signature outlast it.
 
 ## What is signed and what is not — honestly
 

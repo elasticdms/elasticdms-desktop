@@ -268,7 +268,7 @@ jobs:
           @(
             "Built: $(Split-Path -Leaf $new)",
             '',
-            'Unsigned — a test specimen from CI. SmartScreen warns on a double click; distributable packages arise only in release.yml with WINDOWS_PFX deposited (docs/DELIVERY.md).'
+            'Unsigned — a test specimen from CI. SmartScreen warns on a double click; distributable packages arise only in release.yml, which signs over Azure Artifact Signing (docs/DELIVERY.md).'
           ) | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
 
       - uses: actions/upload-artifact@v7
