@@ -164,9 +164,9 @@ $ wix build -arch x64 -d Version=0.1.0 -d BinDir=bin \
     -culture de-DE -loc packaging/windows/de-DE.wxl \
     -ext WixToolset.Util.wixext packaging/windows/elasticdms.wxs -o out.msi
 wix.exe : warning WIX0000: The WiX Toolset only supports Windows. …
-elasticdms.wxs(188) : error WIX0389: The Directory/@Name attribute's value, 'elasticdms',
+elasticdms.wxs(215) : error WIX0389: The Directory/@Name attribute's value, 'elasticdms',
                       is not a relative path.
-elasticdms.wxs(267) : error WIX0027: The File/@Source attribute's value, 'bin\elasticdms.exe',
+elasticdms.wxs(294) : error WIX0027: The File/@Source attribute's value, 'bin\elasticdms.exe',
                       is not a valid filename …
 ```
 
@@ -187,6 +187,31 @@ binding, **without a single `WIX0102`**. Deliberately broken, the same run says 
 
 What stays unproven until a Windows runner has it: the ICE checks, `wix msi transform`, applying
 the transform, and `signtool` on an `.mst`. They stand in the table below.
+
+#### The icon of the row in Programs and Features
+
+`ARPPRODUCTICON` points at an `<Icon>` row, and that row is a **file** `wix` has to open while it
+builds — so it is worth knowing on this machine whether the reference holds and whether the file is
+really read. Both errors above end the compile phase before binding, so the two elements were taken
+out into a scratch file of their own (`Package` with `MediaTemplate`, `Icon`, `ARPPRODUCTICON` and
+an empty `Feature`, nothing else — no `Directory`, no `File`). Measured with wix 5.0.2:
+
+* With `elasticdms.ico` lying in `BinDir`, that file gets through the preprocessor, the linking and
+  the binding and fails only at the last step — `error WIX0001: … Unable to load shared library
+  'msi.dll'`, the Windows call that writes the database. The icon was read before that.
+* With a `BinDir` that holds no `elasticdms.ico`: `error WIX0103: Cannot find the Icon file '…'. The
+  following paths were checked: …`.
+
+So the shape of the reference is proven, and that a missing file fails loudly rather than producing
+a package with a blank row. **Not proven:** that Windows then draws it. Nobody here has seen an
+installed product in Programs and Features.
+
+The icon file itself is **in no directory of this repository**. `crates/app/build.rs` draws it out
+of `crates/app/src/icon.rs` — the same code the notification area icon comes from — and writes it
+next to the built `elasticdms.exe`, which is the directory `BinDir` names. That is why the order in
+`scripts\windows-package.ps1` matters: `-Task build` compiles first and packs afterwards;
+`-Task msi` packs an already compiled `.exe` and checks for the `.ico` beside it before `wix` is
+called at all. Both workflows under `.github/workflows/` take the first way.
 
 ### Where rework is most likely on the first build
 

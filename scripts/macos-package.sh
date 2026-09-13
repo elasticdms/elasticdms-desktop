@@ -179,6 +179,16 @@ task_universal() {
 			"$ROOT/target/${TARGETS[0]}/release/$program" \
 			"$ROOT/target/${TARGETS[1]}/release/$program"
 	done
+
+	# The icon travels with them, copied and not joined: a picture has no architecture, and the
+	# build script writes the same iconset next to each of the two builds. macos-bundle.sh looks
+	# for it beside the programs it bundles, and here that is this directory.
+	local iconset="$ROOT/target/${TARGETS[0]}/release/elasticdms.iconset"
+	[ -d "$iconset" ] ||
+		error "$iconset is missing although the build has run; crates/app/build.rs writes it next to the program."
+	rm -rf "${UNIVERSAL:?}/elasticdms.iconset"
+	cp -R "$iconset" "$UNIVERSAL/elasticdms.iconset"
+
 	verify_universal
 }
 

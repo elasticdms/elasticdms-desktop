@@ -30,7 +30,11 @@ use edms_core::log::{LogEntry, LogError, LogKind, Subject};
 use edms_core::time::Timestamp;
 use edms_i18n::{Catalog, Key, key};
 
-use crate::display::{DisplayError, DisplaySource, DisplayState, LoginCode, Status, Waker};
+use crate::display::{
+    DisplayError, DisplaySource, DisplayState, ExtensionState, Fixed, LoginCode, SetupField,
+    SetupReason, SetupValues, SetupView, Status, Waker,
+};
+use crate::setup::{DATABASE_NAME, DEVICE_NAME_FALLBACK, HOLDING_NAME, STAGING_NAME};
 
 /// The sample account — a name, therefore the same in every catalogue.
 pub fn account(catalogue: &Catalog) -> &str {
@@ -39,6 +43,11 @@ pub fn account(catalogue: &Catalog) -> &str {
 
 /// This is how long the approval in the browser "takes" until the demo reports itself signed in.
 const LOGIN_DURATION: Duration = Duration::from_secs(6);
+
+/// After this many questions the demo's extension switches itself on — the page asks every two
+/// seconds, so it takes about eight of them, long enough to read the page and press the button
+/// once.
+const EXTENSION_QUESTIONS: u32 = 4;
 
 const MINUTE: i64 = 60_000;
 
@@ -112,6 +121,33 @@ struct Inner {
     /// Counts sign-in attempts; a stale approval after "Sign out" (`menu.sign_out`) no longer
     /// takes effect.
     login: u64,
+    /// What the set-up wizard has been told so far in this run.
+    setup: DemoSetup,
+    /// Whether the demo's extension is switched on.
+    extension: ExtensionState,
+    /// How often the extension page has asked. See [`EXTENSION_QUESTIONS`].
+    asked: u32,
+}
+
+/// The three values the demo's wizard really carries; everything else it shows is fixed or
+/// computed. They live for one run and go nowhere: the demo has no store.
+struct DemoSetup {
+    api_base: String,
+    auth_base: String,
+    device_name: String,
+}
+
+impl Default for DemoSetup {
+    fn default() -> Self {
+        Self {
+            // Empty, so that the first walk through the wizard is the one an unmanaged
+            // workstation really has: two fields to fill in and a Next that does not light up
+            // until they are right.
+            api_base: String::new(),
+            auth_base: String::new(),
+            device_name: DEVICE_NAME_FALLBACK.to_owned(),
+        }
+    }
 }
 
 impl Inner {
@@ -148,6 +184,9 @@ impl DemoSource {
             rows: sample_row(now, catalogue)?,
             waker: Vec::new(),
             login: 0,
+            setup: DemoSetup::default(),
+            extension: ExtensionState::Off,
+            asked: 0,
         };
         Ok(Self {
             inner: Arc::new(Mutex::new(inner)),
@@ -347,6 +386,82 @@ impl DisplaySource for DemoSource {
             .baskets
             .ok_or(DisplayError::NotProvisioned(crate::display::Place::Baskets))?;
         open_directory(&path)
+    }
+
+    /// A set-up as an unmanaged workstation has it, with one value the operator fixed all the
+    /// same — so that both cases of ADR-D13 §3 can be seen in one run: fields that are offered,
+    /// and a value that is only shown, with the sentence that says where it comes from.
+    ///
+    /// It stores nothing (there is no store here) and reaches no server. Only the extension
+    /// answers like a real one: it is off and turns on by itself after a few questions, the way
+    /// it does when somebody switches it on in System Settings while this page stands open.
+    fn setup(&self) -> Option<SetupView> {
+        let inner = self.inner();
+        Some(SetupView {
+            // ADR-D13 §11: "It never opens with `--demo`, which has no store to read and nothing
+            // to configure." This is where that holds — `event_loop::open_setup_if_it_is_owed`
+            // opens the wizard by itself for every reason but this one. It is also the only
+            // honest reason here: with no store, nothing the demo does can be completed and
+            // nothing about it can be not yet completed. The wizard is opened by hand, from the
+            // window, and `--demo` keeps showing the usage log.
+            reason: SetupReason::ByHand,
+            api_base: SetupField::open(&inner.setup.api_base),
+            auth_base: SetupField::open(&inner.setup.auth_base),
+            // The one fixed value of the demo. `.example` is never assigned (RFC 2606).
+            app_base: SetupField::fixed("https://archiv.example", Fixed::Operator),
+            device_name: SetupField::open(&inner.setup.device_name),
+            mirror_path: SetupField::open(self.folder.display().to_string()),
+            language: SetupField::open(self.catalogue.language().tag()),
+            enrollment_code: SetupField::open(""),
+            data_path: self.folder.with_file_name(DATABASE_NAME).display().to_string(),
+            staging_path: self.folder.with_file_name(STAGING_NAME).display().to_string(),
+            holding_path: self.folder.with_file_name(HOLDING_NAME).display().to_string(),
+            enrolled: inner.state.account.is_some(),
+            extension: inner.extension,
+        })
+    }
+
+    /// The source decides which values it takes, not the page: a value for a field this source
+    /// reported as fixed is discarded here (ADR-D13 §1). The demo keeps no enrolment code either
+    /// — it is a secret that is used up.
+    fn apply_setup(&self, values: &SetupValues) -> Result<(), DisplayError> {
+        let offered = self.setup().map(|view| {
+            [view.api_base.is_open(), view.auth_base.is_open(), view.device_name.is_open()]
+        });
+        let Some(offered) = offered else { return Err(DisplayError::SetupNotAvailable) };
+        let mut inner = self.inner();
+        let setup = &mut inner.setup;
+        let fields = [
+            (&values.api_base, &mut setup.api_base),
+            (&values.auth_base, &mut setup.auth_base),
+            (&values.device_name, &mut setup.device_name),
+        ];
+        for (open, (from, into)) in offered.into_iter().zip(fields) {
+            match from {
+                Some(text) if open => into.clone_from(text),
+                Some(_) => tracing::debug!("a value for a fixed field was discarded."),
+                None => {}
+            }
+        }
+        Ok(())
+    }
+
+    fn complete_setup(&self) -> Result<(), DisplayError> {
+        // Nothing to write: the demo has no store. That it was reached stands in the log, where
+        // everything else the demo does stands.
+        tracing::debug!("the demo's set-up was walked to its last page.");
+        Ok(())
+    }
+
+    /// Off, and on after [`EXTENSION_QUESTIONS`] questions — the demo of somebody switching it on
+    /// in System Settings while the page stands open and waits.
+    fn extension_state(&self) -> ExtensionState {
+        let mut inner = self.inner();
+        inner.asked = inner.asked.saturating_add(1);
+        if inner.asked > EXTENSION_QUESTIONS {
+            inner.extension = ExtensionState::On;
+        }
+        inner.extension
     }
 
     fn observe(&self, waker: Waker) {
@@ -613,6 +728,9 @@ fn sample_row(now: Timestamp, catalogue: &Catalog) -> Result<Vec<DemoRow>, LogEr
         rows: Vec::new(),
         waker: Vec::new(),
         login: 0,
+        setup: DemoSetup::default(),
+        extension: ExtensionState::Off,
+        asked: 0,
     };
     for (nr, m) in pattern {
         let time = now.plus_millis(-m.before_minute * MINUTE);

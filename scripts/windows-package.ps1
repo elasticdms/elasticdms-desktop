@@ -140,6 +140,12 @@ $Cultures = @('de-DE', 'en-US')
 $Target = 'x86_64-pc-windows-msvc'
 $BinDirectory = Join-Path $Root "target\$Target\release"
 $ExeFile = Join-Path $BinDirectory 'elasticdms.exe'
+# The icon of the row in Programs and Features. It lies beside the .exe because it arises with it:
+# crates\app\build.rs draws it out of crates\app\src\icon.rs and writes it into the directory the
+# program is linked into. packaging\windows\elasticdms.wxs reads it from there as
+# $(var.BinDir)\elasticdms.ico — no fourth preprocessor variable for a file that is already in a
+# directory this script hands over.
+$IconFile = Join-Path $BinDirectory 'elasticdms.ico'
 $PackageDir = Join-Path $Root 'target\package'
 $WixVersion = if ($env:WIX_VERSION) { $env:WIX_VERSION } else { '5.0.2' }
 # The timestamp URL depends on how we sign, and that is decided by `signing_mode` further down —
@@ -580,6 +586,13 @@ function task_msi {
     }
     if (-not (Test-Path -LiteralPath $ExeFile)) {
         throw "No elasticdms.exe lies in $BinDirectory. Compile first (-Task build), then pack."
+    }
+    # LOUD, and before the ten minutes of packing, because the opposite is a package that installs
+    # and shows a blank row in Programs and Features — nothing fails, nobody is told, and it is seen
+    # once it is out at the customer's. `wix build` would report the missing file itself (WIX0103),
+    # but not what to do about it; this sentence does.
+    if (-not (Test-Path -LiteralPath $IconFile)) {
+        throw "No elasticdms.ico lies in $BinDirectory. It is drawn by crates\app\build.rs next to the program; -Task build compiles and packs in that order. If a build has run and the file is still missing, cargo skipped the build script: touch crates\app\src\icon.rs and compile again."
     }
     if (-not (wix_present)) {
         throw "The tool »wix« is missing. Fetch it with: dotnet tool install --global wix --version $WixVersion (or scripts\windows-package.ps1 -Task tool)."

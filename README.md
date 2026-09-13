@@ -146,9 +146,16 @@ Which certificates are needed and how to create them stands in
 
 ## Configuration
 
-Environment variables with the prefix `EDMS_`, checked at start-up; if a mandatory value is
-missing, the start aborts with a message saying which value is missing and what it is needed for.
-No silent defaults for things that have to be right, and no `.env` in the directory.
+Environment variables with the prefix `EDMS_`, checked at start-up. No silent defaults for things
+that have to be right, and no `.env` in the directory.
+
+Three of them are mandatory — the addresses, which the client cannot invent. They may also come
+out of the client's own set-up, which stores them in the local state; a variable that is set wins
+over a stored value, for every value and without an exception list ([ADR-D13](docs/adr/ADR-D13-setup-wizard.md)).
+A workstation that has neither starts into that set-up and asks for them. A variable that is set
+to something unusable is a different matter and still aborts the start, with a message saying
+which value it is and what it is needed for: an administrator's decision is not the set-up's to
+overrule.
 
 | Variable | Meaning |
 |---|---|

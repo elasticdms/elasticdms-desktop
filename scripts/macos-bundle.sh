@@ -21,10 +21,12 @@
 #   SIGNING_IDENTITY=…          Signing identity; default "-" (ad hoc). With a real Developer ID
 #                               identity the hardened runtime comes on top, without which no
 #                               notarisation passes.
-#   BINARY_DIR=…                Where the two programs come from; default target/<PROFILE>.
+#   BINARY_DIR=…                Where the two programs come from, and with them the iconset that
+#                               crates/app/build.rs writes beside them; default target/<PROFILE>.
 #                               scripts/macos-package.sh sets target/universal here, because a
 #                               delivery bundle carries universal programs, and `lipo` has to run
 #                               before `codesign` — afterwards it would cut the signature apart.
+#                               It copies the iconset there as well; a picture has no architecture.
 #   BUNDLE_DIR=…                Where the bundle arises or lies; default target/bundle. That lets
 #                               macos-package.sh check the same rules against the unpacked package
 #                               payload instead of against a second, transcribed list.
@@ -52,6 +54,14 @@ APPEX="$APP/Contents/PlugIns/elasticdms-fileprovider.appex"
 # sidebar as a corpse. So the script has to be where it is still present when it is needed: next to
 # the program it clears away.
 UNINSTALL_SCRIPT="elasticdms-uninstall.sh"
+
+# The icon. It is NOT a file in the repository: crates/app/build.rs draws the ten images out of
+# crates/app/src/icon.rs — the same code the menu bar icon comes from — and puts them beside the
+# built program as elasticdms.iconset. Here `iconutil` makes the container out of them that Finder
+# reads. The name has to be the one CFBundleIconFile in packaging/macos/elasticdms-Info.plist
+# names; `verify_app_plist` holds the two together.
+ICONSET="elasticdms.iconset"
+ICON_FILE="elasticdms.icns"
 
 APP_BINARY="elasticdms"
 APPEX_BINARY="elasticdms-fileprovider"
@@ -139,9 +149,29 @@ task_bundle() {
 	set_plist "$TEMPLATES/elasticdms-Info.plist" "$APP/Contents/Info.plist"
 	set_plist "$TEMPLATES/elasticdms-fileprovider-Info.plist" "$APPEX/Contents/Info.plist"
 
+	build_icon "$from"
+
 	# Before signing: whatever falls into the bundle after signing invalidates the seal.
 	[ -f "$TEMPLATES/$UNINSTALL_SCRIPT" ] || error "$TEMPLATES/$UNINSTALL_SCRIPT is missing."
 	install -m 755 "$TEMPLATES/$UNINSTALL_SCRIPT" "$APP/Contents/Resources/$UNINSTALL_SCRIPT"
+}
+
+# Makes Contents/Resources/elasticdms.icns out of the iconset that lies beside the program.
+#
+# WHY iconutil AND NOT A FILE WRITTEN BY THE BUILD SCRIPT: the .icns is a container of its own, and
+# the only reader whose judgement counts here is macOS. `iconutil` is that reader's own tool — it
+# is on every Mac, it refuses a folder whose names or sizes do not fit, and it writes exactly what
+# Finder and Installer read. A container assembled in Rust would look right in a hex dump and would
+# be judged for the first time at the customer's.
+#
+# A MISSING ICONSET IS AN ERROR AND NOT A WARNING: a bundle with no icon looks finished. It
+# installs, it runs, and only the blank sheet in Finder says that something went wrong — and that
+# is seen once the package is out.
+build_icon() {
+	local from="$1/$ICONSET"
+	command -v iconutil >/dev/null || error "iconutil is missing; it comes with macOS and with the Xcode command line tools."
+	[ -d "$from" ] || error "$from is missing. crates/app/build.rs draws it next to the program; compile first (“compile”), and if the iconset does not appear, touch crates/app/src/icon.rs so that cargo runs the build script again."
+	iconutil --convert icns --output "$APP/Contents/Resources/$ICON_FILE" "$from"
 }
 
 task_sign() {
@@ -210,6 +240,17 @@ verify_app_plist() {
 	# instead of reloading" would silently come to nothing (ADR-D05).
 	[ "$(read_app :LSMinimumSystemVersion)" = "13.0" ] ||
 		error "The app's LSMinimumSystemVersion is not 13.0."
+
+	# The icon is the one thing here that is only ever seen and never reported: a bundle whose
+	# CFBundleIconFile names a file that is not there shows the blank sheet — no error, no log line,
+	# nothing but a picture nobody looks at twice. So both halves are measured, the name in the
+	# plist and the file in Resources, and they have to be the same one.
+	local named
+	named="$(read_app :CFBundleIconFile)"
+	[ "$named" = "$ICON_FILE" ] ||
+		error "CFBundleIconFile is “${named}”, expected was “${ICON_FILE}”."
+	[ -s "$APP/Contents/Resources/$named" ] ||
+		error "Contents/Resources/$named is missing from the bundle or is empty, although the Info.plist names it."
 }
 
 

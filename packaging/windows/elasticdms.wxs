@@ -162,6 +162,33 @@
     <Property Id="ARPCOMMENTS" Value="!(loc.ProductComments)" />
 
     <!--
+      The icon of the row in "Programs and Features". Without ARPPRODUCTICON the row stays blank
+      between the rows of every other product.
+
+      THE ID IS A FILE NAME AND ENDS IN .ico ON PURPOSE. The Id is the Name column of the Icon
+      table, and the Windows Installer writes that icon out to a file of exactly that name before
+      the shell reads it; the shell goes by the extension. An Id "ProductIcon" would make an
+      extensionless file out of it. NOT MEASURED — that is the documented behaviour of the Icon
+      table, and nothing here has ever seen Programs and Features — but it costs nothing to spell
+      the Id the way the documentation asks for.
+
+      WHERE THE FILE COMES FROM. It is not in this repository: crates/app/build.rs draws it out of
+      crates/app/src/icon.rs and puts it next to the built elasticdms.exe — that is the same
+      directory BinDir names, the one the File element in the fragment below reads the program from.
+      `wix build` has to be able to open it while it builds, so the order matters:
+
+        scripts\windows-package.ps1 -Task build   cargo build, THEN wix build — the file is there.
+        scripts\windows-package.ps1 -Task msi     packs an already built exe; the script checks for
+                                                  the .ico beside it and stops with a sentence.
+
+      Both workflows in .github\workflows call the first of the two (job "Package Windows
+      (unsigned)" in ci.yml, job "Windows .msi" in release.yml), and both let that one script do
+      the compiling. There is no path on which wix runs without a cargo build before it.
+    -->
+    <Icon Id="elasticdms.ico" SourceFile="$(var.BinDir)\elasticdms.ico" />
+    <Property Id="ARPPRODUCTICON" Value="elasticdms.ico" />
+
+    <!--
       The three mandatory variables of the client (README, section Configuration). They are public
       MSI properties (upper case) and can therefore be set on the command line:
 

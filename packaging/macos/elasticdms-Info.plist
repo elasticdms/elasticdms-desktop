@@ -25,6 +25,17 @@
 	<string>elasticdms</string>
 	<key>CFBundleExecutable</key>
 	<string>elasticdms</string>
+	<!--
+	  The icon in Finder and in the installer. Without this key macOS draws the blank sheet it draws
+	  for every bundle that names none.
+
+	  The file itself is in no directory of this repository: scripts/macos-bundle.sh makes
+	  Resources/elasticdms.icns with `iconutil` out of the .iconset that crates/app/build.rs draws
+	  from crates/app/src/icon.rs — the same code the menu bar icon comes from. The name here and
+	  the name there are held together by `verify_app_plist` in that script.
+	-->
+	<key>CFBundleIconFile</key>
+	<string>elasticdms.icns</string>
 	<key>CFBundleIdentifier</key>
 	<string>de.elasticdms.folderclient</string>
 	<key>CFBundleInfoDictionaryVersion</key>

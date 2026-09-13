@@ -69,6 +69,18 @@ tao = "0.37"
 wry = "0.57"
 tray-icon = "0.24.2"
 
+# The icon files for Finder and for Explorer, drawn at build time out of crates/app/src/icon.rs
+# (crates/app/build.rs). Both are build dependencies only: nothing of them lands in the program.
+#
+# png is in the tree anyway — tray-icon and muda pull exactly 0.18 (`cargo tree -i png`), so this
+# adds no crate that was not compiled already. It writes the ten images of the macOS .iconset and
+# the 256 px image of the .ico.
+png = "0.18.1"
+# winresource compiles the .ico into a resource and links it into elasticdms.exe. Without default
+# features: the only one, "toml", pulls a TOML parser in order to read out of Cargo.toml what
+# CARGO_PKG_VERSION and CARGO_PKG_NAME already say.
+winresource = { version = "0.1.31", default-features = false }
+
 # macOS File Provider (measured: objc2-file-provider 0.3.2 carries NSFileProviderReplicatedExtension).
 objc2 = "0.6"
 objc2-foundation = "0.3"

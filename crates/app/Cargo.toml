@@ -19,6 +19,14 @@ publish.workspace = true
 name = "elasticdms"
 path = "src/main.rs"
 
+# The icon of the .exe, of the .app and of the row in "Programs and Features" — drawn by build.rs
+# out of src/icon.rs, the same code the tray icon comes from. serde stands here because build.rs
+# includes src/icon.rs as it is, and that file derives Serialize for IconState.
+[build-dependencies]
+png.workspace = true
+winresource.workspace = true
+serde.workspace = true
+
 [dependencies]
 edms-core.workspace = true
 # Every sentence the user reads. The app is the only crate that knows both the text catalogue and

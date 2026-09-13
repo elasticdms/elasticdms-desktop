@@ -38,6 +38,7 @@ to the right place, or not.
 | `scripts-loginitem/postinstall` | Loads the login item straight away instead of waiting for the next sign-in |
 | `resources/conclusion.html` | The installer's conclusion text: the one manual step nobody can take off the user |
 | — | The app gets **no** entitlements file: it is not sandboxed (ADR-D05, measurement 2) |
+| — | The icon is **no file here** either: `crates/app/build.rs` draws the ten images out of `crates/app/src/icon.rs` beside the program, and `scripts/macos-bundle.sh` makes `Contents/Resources/elasticdms.icns` from them with `iconutil`. `CFBundleIconFile` in the app's `Info.plist` names it |
 
 The scripts replace `@VERSION@` in the plists and in `distribution.dist` from
 `[workspace.package].version`; the version has its only truth in `Cargo.toml`. The installer decides
