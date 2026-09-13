@@ -23,9 +23,11 @@
 
 use std::process::ExitCode;
 
+use edms_engine::StoreSpace;
+use edms_engine::config::{Origin, Value};
 use edms_engine::report::{DatabaseReport, Report};
-use edms_engine::{EngineConfiguration, StoreSpace};
 
+use crate::setup::{Counterpart, Resolution};
 use crate::vault::SystemVault;
 use crate::wiring::build_engine;
 
@@ -66,15 +68,31 @@ pub fn run() -> ExitCode {
 fn gather() -> Result<Vec<String>, String> {
     println!("elasticdms {} — diagnosis (without the network)", env!("CARGO_PKG_VERSION"));
 
-    let configuration = crate::setup::configuration().map_err(|error| {
-        format!("\nThe setup does not stand:\n  • {error}\n\nWithout it there are no findings.")
-    })?;
+    // The same resolution the app starts from, and it is read **before** it is judged: what the
+    // rows show is what this workstation really has, even when one value is missing — the sentence
+    // underneath then says which one. A report that printed nothing because one line is missing
+    // would be the report nobody can act on.
+    let resolution = crate::setup::resolve();
     println!("\n{}", section("Setup"));
-    for (feature, value) in setup_row(&configuration) {
-        println!("  {feature:<22} {value}");
+    for (feature, value, source) in setup_row(&resolution) {
+        println!("  {feature:<22} {value:<44} {source}");
     }
 
+    let configuration = resolution.configuration().map_err(|error| {
+        format!("\nThe setup does not stand:\n  • {error}\n\nWithout it there are no findings.")
+    })?;
+
     let mut objections = Vec::new();
+    // Not a defect, and it still belongs in the answer: the next start will act on it, and whoever
+    // reads this report should know before the folder empties itself.
+    if let Counterpart::Changed(old) = resolution.counterpart() {
+        objections.push(format!(
+            "This device is enrolled against `{}` and is configured for `{}` now. At the next \
+             start the client signs out from the old server, clears the folder and asks to be set \
+             up afresh (ADR-D13 §4).",
+            old.api_base, configuration.api_base
+        ));
+    }
     println!("\n{}", section("Keychain"));
     match SystemVault::new().check() {
         Ok(()) => println!("  {:<22} reachable", "State"),
@@ -105,27 +123,95 @@ fn gather() -> Result<Vec<String>, String> {
     Ok(objections)
 }
 
-/// The setup in rows — without a single secret.
-fn setup_row(k: &EngineConfiguration) -> Vec<(String, String)> {
-    let path = |p: &std::path::Path| {
-        let da = if p.exists() { "" } else { "  (does not exist yet)" };
-        format!("{}{da}", p.display())
-    };
-    vec![
-        ("API".to_owned(), k.api_base.clone()),
-        ("Sign-in".to_owned(), k.auth_base.clone()),
-        ("Web interface".to_owned(), k.app_base.clone()),
-        ("Device name".to_owned(), k.device_name.clone()),
-        (
-            "Enrolment code".to_owned(),
-            // The code is a secret with an expiry: only **whether** there is one stands here.
-            if k.enrollment_code.is_some() { "present".to_owned() } else { "—".to_owned() },
+/// What each value is called in the report. English, out of the catalogue's reach: this is the
+/// line somebody pastes into a ticket (ADR-D10).
+const fn feature(which: Value) -> &'static str {
+    match which {
+        Value::ApiBase => "API",
+        Value::AuthBase => "Sign-in",
+        Value::AppBase => "Web interface",
+        Value::DeviceName => "Device name",
+        Value::Language => "Language",
+        Value::DataPath => "Local state",
+        Value::Staging => "Staging area",
+        Value::MirrorPath => "Folder",
+        Value::Holding => "Holding directory",
+    }
+}
+
+/// The setup in rows — value, and where the value came from. Without a single secret.
+///
+/// The third column is what ADR-D13 §3 asks for: the set-up tells the **user** only that their IT
+/// department has set a value, and names no variable; the variable belongs here, where the support
+/// call looks. One place to look, and the user's window is not it.
+fn setup_row(resolution: &Resolution) -> Vec<(String, String, String)> {
+    let mut rows = Vec::new();
+    for which in Value::ALL {
+        let (value, source) = match resolution.of(which) {
+            None => ("—".to_owned(), format!("not set ({})", which.variable())),
+            Some(found) => {
+                let mut value = found.text().to_owned();
+                if is_path(which) && !std::path::Path::new(found.text()).exists() {
+                    value.push_str("  (does not exist yet)");
+                }
+                let source = match found.origin() {
+                    Origin::Environment => {
+                        format!("{} ({})", found.origin().label(), which.variable())
+                    }
+                    Origin::Setting => match which.setting_key() {
+                        Some(key) => format!("{} ({key})", found.origin().label()),
+                        None => found.origin().label().to_owned(),
+                    },
+                    Origin::Default => found.origin().label().to_owned(),
+                };
+                (value, source)
+            }
+        };
+        rows.push((feature(which).to_owned(), value, source));
+    }
+    rows.push((
+        "Enrolment code".to_owned(),
+        // The code is a secret with an expiry: only **whether** there is one stands here. It is
+        // not a `Value` at all, so no loop over the values can print it by accident.
+        if resolution.has_enrollment_code() { "present".to_owned() } else { "—".to_owned() },
+        if resolution.has_enrollment_code() {
+            "environment (EDMS_ENROLLMENT_CODE)".to_owned()
+        } else {
+            String::new()
+        },
+    ));
+    rows.push((
+        "Set-up".to_owned(),
+        if resolution.completed() { "completed".to_owned() } else { "not completed".to_owned() },
+        "setting (setup.completed)".to_owned(),
+    ));
+    rows.push(counterpart_row(resolution));
+    rows
+}
+
+/// Which of the values is a path, and therefore gets the note that it is not there yet.
+const fn is_path(which: Value) -> bool {
+    matches!(which, Value::DataPath | Value::Staging | Value::MirrorPath | Value::Holding)
+}
+
+/// Which server this device is enrolled against — the row that makes ADR-D13 §4 readable.
+fn counterpart_row(resolution: &Resolution) -> (String, String, String) {
+    let (value, source) = match resolution.counterpart() {
+        Counterpart::NotEnrolled => ("— (not enrolled)".to_owned(), String::new()),
+        Counterpart::Enrolled { sealed: true } => {
+            ("the API above".to_owned(), "setting (counterpart.api-base)".to_owned())
+        }
+        // Enrolled before the seal existed: nobody can reconstruct where. It writes the keys at
+        // this start, and the comparison holds from the next one (ADR-D13 §4).
+        Counterpart::Enrolled { sealed: false } => {
+            ("unknown (enrolled before this was remembered)".to_owned(), String::new())
+        }
+        Counterpart::Changed(old) => (
+            old.api_base.clone(),
+            "setting (counterpart.api-base) — DIFFERS from the API above".to_owned(),
         ),
-        ("Local state".to_owned(), path(&k.data_path)),
-        ("Staging area".to_owned(), path(&k.staging)),
-        ("Folder".to_owned(), path(&k.mirror_path)),
-        ("Holding directory".to_owned(), path(&k.holding)),
-    ]
+    };
+    ("Enrolled against".to_owned(), value, source)
 }
 
 /// What is wrong with this report. Empty means: nothing.
@@ -277,18 +363,75 @@ mod tests {
         assert!(objections_in(&report).is_empty());
     }
 
+    /// A resolution over two maps, the way `doctor` will meet one.
+    fn resolution(environment: &[(&str, &str)], settings: &[(&str, &str)]) -> Resolution {
+        let environment: std::collections::HashMap<String, String> =
+            environment.iter().map(|(k, v)| ((*k).to_owned(), (*v).to_owned())).collect();
+        let settings: std::collections::HashMap<String, String> =
+            settings.iter().map(|(k, v)| ((*k).to_owned(), (*v).to_owned())).collect();
+        crate::setup::read(
+            &|name| environment.get(name).cloned(),
+            &|key| settings.get(key).cloned(),
+            edms_i18n::Language::De,
+        )
+    }
+
+    fn as_text(rows: &[(String, String, String)]) -> String {
+        rows.iter().map(|(a, b, c)| format!("{a} {b} {c}")).collect::<Vec<_>>().join("\n")
+    }
+
     #[test]
     fn the_enrollment_code_never_stands_in_the_clear_in_the_report() {
-        let k = EngineConfiguration::builder(std::path::Path::new("/tmp/probe"))
-            .with_enrollment_code(Some("K7QM-4T2X"))
-            .finished();
-        let text = setup_row(&k)
-            .into_iter()
-            .map(|(m, w)| format!("{m} {w}"))
-            .collect::<Vec<_>>()
-            .join("\n");
+        let found = resolution(&[("EDMS_ENROLLMENT_CODE", "K7QM-4T2X")], &[]);
+        let text = as_text(&setup_row(&found));
         assert!(!text.contains("K7QM-4T2X"), "{text}");
         assert!(text.contains("present"), "{text}");
+    }
+
+    #[test]
+    fn every_value_carries_the_channel_it_came_through_and_names_the_variable_that_fixed_it() {
+        // ADR-D13 §3: the user's window says only that the IT department set this device up; the
+        // variable belongs here, in English, where the support call looks.
+        let found = resolution(
+            &[("EDMS_API_BASE", "https://api.acme")],
+            &[("setup.auth-base", "https://auth.acme")],
+        );
+        let rows = setup_row(&found);
+        let row = |feature: &str| {
+            rows.iter().find(|(m, _, _)| m == feature).cloned().expect("a row of its own")
+        };
+        let (_, value, source) = row("API");
+        assert_eq!(value, "https://api.acme");
+        assert_eq!(source, "environment (EDMS_API_BASE)");
+        let (_, value, source) = row("Sign-in");
+        assert_eq!(value, "https://auth.acme");
+        assert_eq!(source, "setting (setup.auth-base)");
+        let (_, value, source) = row("Web interface");
+        assert_eq!(value, "—", "nobody has said anything about it");
+        assert_eq!(source, "not set (EDMS_APP_BASE)");
+        let (_, _, source) = row("Folder");
+        assert_eq!(source, "default", "computed on this machine");
+    }
+
+    #[test]
+    fn a_counterpart_that_differs_stands_in_a_row_of_its_own_and_says_so() {
+        let found = resolution(
+            &[
+                ("EDMS_API_BASE", "https://api.other"),
+                ("EDMS_AUTH_BASE", "https://auth.other"),
+                ("EDMS_APP_BASE", "https://app.other"),
+            ],
+            &[
+                ("device.enrolled", "yes"),
+                ("counterpart.api-base", "https://api.acme"),
+                ("counterpart.auth-base", "https://auth.acme"),
+                ("counterpart.app-base", "https://app.acme"),
+            ],
+        );
+        let (feature, value, source) = counterpart_row(&found);
+        assert_eq!(feature, "Enrolled against");
+        assert_eq!(value, "https://api.acme");
+        assert!(source.contains("DIFFERS"), "{source}");
     }
 
     #[test]

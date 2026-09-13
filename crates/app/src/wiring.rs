@@ -48,10 +48,12 @@
 
 use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
+
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use edms_core::log::{LogEntry, LogKind};
-use edms_engine::config::ConfigurationError;
+use edms_engine::config::{ConfigurationError, Value};
+use edms_engine::session::{SETTING_ENROLLED, SETTING_KEY_SET};
 use edms_engine::{
     Engine, EngineConfiguration, EngineError, EngineEvent, EngineState, KeyBundle, ServerObject,
     StoreVault, Vault,
@@ -60,8 +62,12 @@ use edms_i18n::{Catalog, key};
 use edms_net::{Connection, ServerAccess};
 use edms_store::Store;
 
-use crate::display::{DisplayError, DisplaySource, DisplayState, LoginCode, Status, Waker};
+use crate::display::{
+    DisplayError, DisplaySource, DisplayState, ExtensionState, Fixed, LoginCode, SetupField,
+    SetupReason, SetupValues, SetupView, Status, Waker,
+};
 use crate::platform::Platform;
+use crate::setup::{Addresses, Counterpart, Resolution, SettingRefused};
 use crate::time::now;
 use crate::vault::SystemVault;
 
@@ -115,6 +121,24 @@ pub enum StartupAbort {
     /// The local state could not be opened.
     #[error(transparent)]
     Store(#[from] edms_store::StoreError),
+    /// This device is enrolled against another server, and the sign-out from it did not start.
+    ///
+    /// The start aborts here rather than carrying on: carrying on would mean a mirror of the old
+    /// tenant's documents lying open on a machine that now speaks to a different server, which is
+    /// exactly the quiet re-point ADR-D13 §4 exists to prevent.
+    #[error(
+        "this device is enrolled against `{stored}` and is configured for `{now}` now; the \
+         sign-out from the old server did not start, and the folder is not cleared until it does: \
+         {reason}"
+    )]
+    Counterpart {
+        /// The API this device enrolled against.
+        stored: String,
+        /// The API it is pointed at now.
+        now: String,
+        /// What went wrong on the way there.
+        reason: String,
+    },
     /// The server addresses are not usable.
     #[error("the server addresses are not usable: {0}")]
     Connection(#[from] edms_net::ConnectionError),
@@ -135,6 +159,33 @@ pub struct EngineView {
     without_folder: Option<String>,
     /// Held until [`DisplaySource::stop`] clears it.
     platform: Mutex<Option<Platform>>,
+    /// The `setting` table for the set-up — a second connection to the same file.
+    ///
+    /// The store is in WAL mode exactly so that a second reader can stand beside the writer
+    /// (`edms_store`, module header), and `setup::resolve` already opens one at every start. It
+    /// is held rather than opened per click because every method of [`DisplaySource`] runs on the
+    /// user-interface thread and has to answer at once; opening a database file per render of the
+    /// wizard would be a file operation in that path.
+    settings: Mutex<Store>,
+    /// What macOS last said about the extension, and whether a question is on its way.
+    extension: Arc<ExtensionWatch>,
+}
+
+/// The last answer to "is the folder switched on?", and one question at a time.
+///
+/// ADR-D13 §9: the question runs off the user-interface thread and a timeout counts as "not on
+/// yet". The page asks every two seconds while its step is open; without the flag every one of
+/// those would start a thread of its own against a call that may sit for the whole deadline.
+///
+/// Empty off macOS, and behind a `cfg` rather than behind an unread field: there is no extension
+/// to switch on there, the page that would ask is not in the binary (`window::EXTENSION`), and a
+/// mutex nobody reads is a mutex the next reader has to work out the meaning of.
+#[derive(Debug, Default)]
+struct ExtensionWatch {
+    #[cfg(target_os = "macos")]
+    answered: Mutex<Option<bool>>,
+    #[cfg(target_os = "macos")]
+    asking: std::sync::atomic::AtomicBool,
 }
 
 impl std::fmt::Debug for EngineView {
@@ -244,7 +295,20 @@ impl EngineView {
         let mirror_path = configuration.mirror_path.clone();
         let baskets_path =
             mirror_path.join(edms_core::namespace::name_baskets(configuration.language));
-        let engine = Arc::new(build_engine(configuration)?);
+        // Before the engine is built, and only here: `doctor` goes through `build_engine` and must
+        // change nothing (ADR-D13 §4).
+        let mut store = open_state(&configuration)?;
+        if let Counterpart::Changed(old) = crate::setup::counterpart_of(&store, &configuration)? {
+            drop(store);
+            start_afresh(&configuration, &old)?;
+            store = open_state(&configuration)?;
+            crate::setup::note_counterpart_changed(&mut store, &old)?;
+        }
+        crate::setup::remember_counterpart(&mut store, &configuration)?;
+        // Before the engine takes the first connection: the set-up's own, to the same file. See
+        // the field's comment for why it is held and not opened per click.
+        let settings = open_state(&configuration)?;
+        let engine = Arc::new(build_with(configuration, store)?);
 
         let (platform, without_folder) =
             match crate::platform::connect(engine.source(), engine.intake(), &mirror_path) {
@@ -265,6 +329,8 @@ impl EngineView {
             baskets_path,
             without_folder,
             platform: Mutex::new(platform),
+            settings: Mutex::new(settings),
+            extension: Arc::new(ExtensionWatch::default()),
         };
         start_listener(Arc::clone(&engine), Arc::clone(&view.inner));
         if let Err(error) = engine.sign_in() {
@@ -278,19 +344,43 @@ impl EngineView {
 /// Builds store, keychain, connection, server access and engine — in that order.
 ///
 /// `doctor` takes this route too: a report from an engine built differently would be a report about
-/// a different program.
+/// a different program. What `doctor` does **not** take is the counterpart seal: a diagnosis reads
+/// and changes nothing, and signing a workstation out is not a reading.
 ///
 /// # Errors
 ///
 /// [`StartupAbort`] naming the step that did not work.
 pub fn build_engine(configuration: EngineConfiguration) -> Result<Engine, StartupAbort> {
-    // The engine creates its directories itself — but only in `start`, and the store is opened
-    // before that. Without this call `Store::open` would fail on the very first start.
+    let store = open_state(&configuration)?;
+    build_with(configuration, store)
+}
+
+/// The local state, with the directories that have to exist before it can be opened.
+///
+/// The engine creates its directories itself — but only in `start`, and the store is opened before
+/// that. Without this call `Store::open` would fail on the very first start.
+///
+/// `[GAP → PROPOSAL]` The store is opened three times on a real start: once by `setup::resolve`,
+/// which has to read the settings before it knows the three addresses, once here for the engine,
+/// and once more for the set-up's own reading and writing (`EngineView::settings`). It is one
+/// SQLite file in WAL mode, which is what makes that possible at all (`edms_store`, module
+/// header), and the third is deliberate — it outlives this call, where the engine's does not.
+/// ADR-D13 §7 wants `build_engine` to take an already open store instead of opening its own; that
+/// means a changed signature at `EngineView::start`'s caller, which belongs to whoever owns the
+/// event loop.
+fn open_state(configuration: &EngineConfiguration) -> Result<Store, StartupAbort> {
     configuration.create_directories().map_err(|reason| StartupAbort::Directory {
         path: configuration.data_path.clone(),
         reason: reason.to_string(),
     })?;
-    let mut store = Store::open(&configuration.data_path)?;
+    Ok(Store::open(&configuration.data_path)?)
+}
+
+/// The rest of the order, once the local state is open.
+fn build_with(
+    configuration: EngineConfiguration,
+    mut store: Store,
+) -> Result<Engine, StartupAbort> {
     let hardware = crate::device_key::of_this_platform();
     let bundle = KeyBundle::set_up(choose_vault()?, &mut store, hardware.as_deref())?;
     let connection = Connection::new(
@@ -302,6 +392,78 @@ pub fn build_engine(configuration: EngineConfiguration) -> Result<Engine, Startu
     let server: Arc<dyn ServerObject> =
         Arc::new(ServerAccess::new(connection, bundle.as_source())?);
     Ok(Engine::start(configuration, server, store, bundle)?)
+}
+
+/// Signs this device out of the server it enrolled against, and forgets what belonged to that
+/// server — because the addresses have changed underneath it (ADR-D13 §4).
+///
+/// The order is the ADR's, and each step has its reason:
+///
+/// 1. **Build against the stored addresses and sign out through the normal path.** The revoke goes
+///    to the old server, the mirror is cleared, the namespace emptied, the session forgotten — the
+///    revoke may fail and the clearing happens anyway (`Engine::sign_out`). A clearing written
+///    afresh here would be a second sign-out, and the second one is the one nobody maintains.
+/// 2. **Clear `device.enrolled` and the anchored key set.** The anchor belongs to the old server,
+///    and an anchor from another tenant would silently discard every delivery command of the new
+///    one — "when in doubt, preserve" would become "never again".
+/// 3. **Keep the device key and the device identifier.** They are this machine's, and a new device
+///    key is a different device (ADR-D12 §6).
+///
+/// This can sit for a connect timeout against a server that is no longer there. That is the price
+/// of not carrying a signed-in session across, and it is paid once.
+fn start_afresh(configuration: &EngineConfiguration, old: &Addresses) -> Result<(), StartupAbort> {
+    tracing::warn!(
+        stored = old.api_base,
+        configured = configuration.api_base,
+        "this device is enrolled against another server; signing out from the old one before the \
+         set-up starts afresh."
+    );
+    let refused = |reason: String| StartupAbort::Counterpart {
+        stored: old.api_base.clone(),
+        now: configuration.api_base.clone(),
+        reason,
+    };
+    let old_configuration = EngineConfiguration {
+        api_base: old.api_base.clone(),
+        auth_base: old.auth_base.clone(),
+        app_base: old.app_base.clone(),
+        // Nothing else is the old server's: the paths, the name and the language belong to this
+        // machine, and the enrolment code is not carried into a sign-out.
+        enrollment_code: None,
+        ..configuration.clone()
+    };
+    let engine = build_engine(old_configuration).map_err(|error| refused(error.to_string()))?;
+    // The folder has to be connected for this, and for exactly one reason: `clear_everything` is
+    // the step that empties the mirror, and an engine without a file system skips it silently —
+    // the old tenant's documents would stay lying on a machine that now speaks to another server.
+    let platform = match crate::platform::connect(
+        engine.source(),
+        engine.intake(),
+        &configuration.mirror_path,
+    ) {
+        Ok(platform) => {
+            engine.set_file_system(platform.file_system());
+            Some(platform)
+        }
+        Err(abort) => {
+            tracing::warn!(%abort, "no folder on this device; the sign-out clears what there is");
+            None
+        }
+    };
+    // The revoke may fail — the old server may be gone, and the local clearing is what matters.
+    if let Err(error) = engine.sign_out() {
+        tracing::warn!(%error, "the sign-out from the old server did not complete; the local state is cleared all the same.");
+    }
+    engine.stop();
+    if let Some(mut platform) = platform {
+        platform.stop();
+    }
+    drop(engine);
+
+    let mut store = open_state(configuration)?;
+    store.delete_setting(SETTING_ENROLLED)?;
+    store.delete_setting(SETTING_KEY_SET)?;
+    Ok(())
 }
 
 /// Which vault holds the secrets.
@@ -504,6 +666,214 @@ fn as_display_error(error: &EngineError, catalogue: &Catalog) -> DisplayError {
     DisplayError::NotPossible(error.user_text(catalogue))
 }
 
+/// The values of the wizard, in the order the pages ask for them.
+///
+/// The enrolment code is deliberately not among them: it has no `setting_key`, is never stored,
+/// and reaches the engine only inside a configuration (ADR-D13 §6). It arrives in
+/// [`SetupValues`] and goes no further than this list refuses to carry it.
+const OFFERED: [Value; 6] = [
+    Value::ApiBase,
+    Value::AuthBase,
+    Value::AppBase,
+    Value::DeviceName,
+    Value::MirrorPath,
+    Value::Language,
+];
+
+/// What a resolution says about one value, as the wizard has to show it (ADR-D13 §3).
+///
+/// Three of the four reasons are decided here. [`Fixed::Operator`] is the environment's, and the
+/// resolution knows it. [`Fixed::Enrolled`] is the device name once the server carries it — the
+/// same refusal [`crate::setup::set_value`] makes, said before the user types rather than after.
+/// [`Fixed::Mirror`] is the root of the mirror where this platform does not let a value decide
+/// it.
+fn field_of(resolution: &Resolution, which: Value) -> SetupField {
+    let value = resolution.text(which).unwrap_or_default();
+    if resolution.is_fixed(which) {
+        return SetupField::fixed(value, Fixed::Operator);
+    }
+    match which {
+        Value::DeviceName if matches!(resolution.counterpart(), Counterpart::Enrolled { .. }) => {
+            SetupField::fixed(value, Fixed::Enrolled)
+        }
+        // ADR-D13, measurement 5: off Windows the root is named by the File Provider and lies
+        // under `~/Library/CloudStorage/`. The field is not in the page there (`window::MIRROR`),
+        // and saying so here is what makes `apply_setup` discard a value for it — the source
+        // decides, not the page (§1).
+        Value::MirrorPath if !cfg!(windows) => SetupField::fixed(value, Fixed::Mirror),
+        _ => SetupField::open(value),
+    }
+}
+
+/// Which of the three reasons the wizard is open for.
+///
+/// The order is the order of urgency: a device that was pointed somewhere else has something to
+/// be told, a device that has never been walked through is being set up, and everything after
+/// that is somebody opening the wizard from the window, where nothing is wrong and nothing is
+/// said about it.
+fn reason_of(resolution: &Resolution) -> SetupReason {
+    if resolution.counterpart_changed().is_some() {
+        SetupReason::Counterpart
+    } else if resolution.completed() {
+        SetupReason::ByHand
+    } else {
+        SetupReason::First
+    }
+}
+
+/// The whole wizard, out of one resolution.
+pub fn view_of(resolution: &Resolution, extension: ExtensionState) -> SetupView {
+    let place = |which: Value| resolution.text(which).unwrap_or_default().to_owned();
+    SetupView {
+        reason: reason_of(resolution),
+        api_base: field_of(resolution, Value::ApiBase),
+        auth_base: field_of(resolution, Value::AuthBase),
+        app_base: field_of(resolution, Value::AppBase),
+        device_name: field_of(resolution, Value::DeviceName),
+        mirror_path: field_of(resolution, Value::MirrorPath),
+        language: field_of(resolution, Value::Language),
+        // Never a value, only whether the device was given one: the code is a one-time secret
+        // that is not stored and not reported (ADR-D13 §6). An environment that carries one takes
+        // the page away, exactly as a set variable takes every other field away.
+        enrollment_code: if resolution.has_enrollment_code() {
+            SetupField::fixed("", Fixed::Operator)
+        } else {
+            SetupField::open("")
+        },
+        data_path: place(Value::DataPath),
+        staging_path: place(Value::Staging),
+        holding_path: place(Value::Holding),
+        enrolled: matches!(resolution.counterpart(), Counterpart::Enrolled { .. }),
+        extension,
+    }
+}
+
+/// Takes what the wizard's input pages carried over — through [`crate::setup::set_value`] and
+/// through nothing else.
+///
+/// Here and not in either source, because both have to behave identically:
+/// [`crate::awaiting::AwaitingSetup`] runs this before there is an engine and [`EngineView`] runs
+/// it afterwards, and a workstation that was set up before its first start must end up with the
+/// same `setting` table as one that was set up after.
+///
+/// **The source decides, not the page** (ADR-D13 §1). A value for a field [`view_of`] reported as
+/// fixed is discarded in silence: the page never offered it, so a sentence about it would be a
+/// complaint about a click the user did not make. Everything else the door refuses comes back as
+/// the sentence the catalogue has for it.
+///
+/// A value the door takes is written at once, one by one. There is no transaction over the six:
+/// each is its own answer to its own question, and a run that stops at the third has stored the
+/// first two — which is what the next render then shows.
+///
+/// # Errors
+///
+/// [`DisplayError::NotPossible`] with the catalogue's whole sentence for the first value the
+/// store's door refused for a reason the user can do something about.
+pub fn store_values(
+    store: &mut Store,
+    values: &SetupValues,
+    catalogue: &Catalog,
+) -> Result<(), DisplayError> {
+    let resolution = crate::setup::resolve_over(store);
+    let typed = [
+        &values.api_base,
+        &values.auth_base,
+        &values.app_base,
+        &values.device_name,
+        &values.mirror_path,
+        &values.language,
+    ];
+    for (which, text) in OFFERED.into_iter().zip(typed) {
+        let Some(text) = text else { continue };
+        // What the view says is fixed is not this page's to set, whatever it sent. The door
+        // refuses the same values for itself; this is the reason the page is told nothing about
+        // it.
+        if !field_of(&resolution, which).is_open() {
+            tracing::debug!(value = which.variable(), "a value for a fixed field was discarded.");
+            continue;
+        }
+        match crate::setup::set_value(store, &resolution, which, text) {
+            Ok(stored) => tracing::info!(
+                value = which.variable(),
+                key = which.setting_key().unwrap_or("—"),
+                length = stored.len(),
+                "a value of the set-up was stored."
+            ),
+            Err(refused) if refused.is_not_offered() => {
+                tracing::debug!(%refused, "a value the set-up does not offer was discarded.");
+            }
+            Err(refused) => return Err(refused_text(which, &refused, catalogue)),
+        }
+    }
+    // The code is never stored and never reported. It reaches the engine through the
+    // configuration of the next start, and that is the whole of its way (ADR-D13 §6).
+    if values.enrollment_code.is_some() {
+        tracing::debug!("an enrolment code was handed over; it is not stored.");
+    }
+    Ok(())
+}
+
+/// A refusal of the store's door as the person who typed the value reads it.
+///
+/// Two faces, as everywhere in this house: the English diagnostic goes into the log, the
+/// catalogue's sentence into the window.
+fn refused_text(which: Value, refused: &SettingRefused, catalogue: &Catalog) -> DisplayError {
+    tracing::warn!(%refused, value = which.variable(), "a value of the set-up was not stored.");
+    DisplayError::NotPossible(catalogue.text(refused.user_key()).to_owned())
+}
+
+impl EngineView {
+    /// The `setting` table, for the one reader and the one writer of `crate::setup`.
+    fn settings(&self) -> MutexGuard<'_, Store> {
+        self.settings.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+}
+
+impl ExtensionWatch {
+    /// The last answer, at once — and a question on its way when there is none in flight.
+    ///
+    /// The question itself must not run here (ADR-D13 §9); what runs here is reading a mutex.
+    #[cfg(target_os = "macos")]
+    fn answer(self: &Arc<Self>) -> ExtensionState {
+        use std::sync::atomic::Ordering;
+
+        let known = *self.answered.lock().unwrap_or_else(PoisonError::into_inner);
+        // One question at a time: the page asks every two seconds while its step is open, and the
+        // call may sit for the whole deadline.
+        if !self.asking.swap(true, Ordering::AcqRel) {
+            let mine = Arc::clone(self);
+            let started =
+                std::thread::Builder::new().name("edms-extension".to_owned()).spawn(move || {
+                    let answer = crate::platform::extension_is_on();
+                    *mine.answered.lock().unwrap_or_else(PoisonError::into_inner) = Some(answer);
+                    mine.asking.store(false, Ordering::Release);
+                });
+            if let Err(error) = started {
+                // Without the thread the page would say "asking macOS …" for ever. Letting the
+                // flag go means the next of its two-second questions tries again.
+                tracing::warn!(%error, "the question about the folder's extension was not started.");
+                self.asking.store(false, Ordering::Release);
+            }
+        }
+        match known {
+            None => ExtensionState::Asking,
+            Some(true) => ExtensionState::On,
+            Some(false) => ExtensionState::Off,
+        }
+    }
+
+    /// Nothing to ask, and nothing waiting on an answer.
+    ///
+    /// This platform's folder needs no extension switched on, and the page that would ask is not
+    /// in the binary (`window::EXTENSION`), so nothing reads this. [`ExtensionState::On`] is the
+    /// answer that adds no step — and it is not a claim about an extension but about the folder:
+    /// here it works without one.
+    #[cfg(not(target_os = "macos"))]
+    fn answer(self: &Arc<Self>) -> ExtensionState {
+        ExtensionState::On
+    }
+}
+
 impl DisplaySource for EngineView {
     fn state(&self) -> DisplayState {
         let state = self.engine.state_now();
@@ -641,6 +1011,51 @@ impl DisplaySource for EngineView {
             return Err(DisplayError::NotProvisioned(crate::display::Place::Baskets));
         }
         open(&self.baskets_path)
+    }
+
+    /// The set-up as this workstation stands right now — read afresh on every call.
+    ///
+    /// Not cached: between two renders the engine may have enrolled the device, which closes the
+    /// name and takes the code page away, and a wizard drawn from a resolution of five minutes
+    /// ago would offer a field that is no longer anybody's to type in.
+    fn setup(&self) -> Option<SetupView> {
+        let resolution = crate::setup::resolve_over(&self.settings());
+        Some(view_of(&resolution, self.extension.answer()))
+    }
+
+    /// Takes what the wizard's input pages carried over — see [`store_values`], which both
+    /// sources share so that a workstation set up before its first start ends up with the same
+    /// `setting` table as one set up after.
+    fn apply_setup(&self, values: &SetupValues) -> Result<(), DisplayError> {
+        store_values(&mut self.settings(), values, self.inner.catalogue)
+    }
+
+    /// The last page was reached — `setup.completed` is written, and the note about a counterpart
+    /// that changed is forgotten.
+    ///
+    /// The two belong together. `note_counterpart_changed` writes the note and drops the
+    /// completed mark at the start that found the re-point; this is the one place that has shown
+    /// the sentence to somebody. Without it the note would stay in the `setting` table for the
+    /// life of the installation and every later set-up would open on "this device was set up
+    /// against a different server".
+    ///
+    /// Reached, not succeeded (ADR-D13 §11): a device waiting for its approval has finished its
+    /// set-up honestly.
+    fn complete_setup(&self) -> Result<(), DisplayError> {
+        let mut store = self.settings();
+        let catalogue = self.inner.catalogue;
+        let refused = |error: edms_store::StoreError| {
+            tracing::warn!(%error, "the set-up's completed mark was not written.");
+            DisplayError::NotPossible(catalogue.text(key::SETUP_WRONG_NOT_STORED).to_owned())
+        };
+        crate::setup::mark_completed(&mut store).map_err(refused)?;
+        crate::setup::forget_counterpart_changed(&mut store).map_err(refused)?;
+        tracing::info!("the set-up was walked to its last page.");
+        Ok(())
+    }
+
+    fn extension_state(&self) -> ExtensionState {
+        self.extension.answer()
     }
 
     fn observe(&self, waker: Waker) {
@@ -805,5 +1220,159 @@ mod tests {
         assert!(error.contains(VAULT_KEYCHAIN), "{error}");
         assert!(error.contains(VAULT_MEMORY), "{error}");
         assert!(error.contains(VAR_VAULT), "{error}");
+    }
+
+    // ── The set-up, on the product's own path ──────────────────────────────────
+    //
+    // These exercise [`view_of`] and [`store_values`] — what `EngineView` and
+    // `crate::awaiting::AwaitingSetup` both answer with. An `EngineView` itself cannot be built
+    // in a test (it opens the operating system's keychain and starts an engine), and that is
+    // exactly why the two halves of the wizard live in free functions here: a test of the demo's
+    // source proves nothing about the shipped one, and for a while there was no other kind.
+
+    use std::collections::HashMap;
+
+    use edms_engine::config::{
+        SETTING_API_BASE, SETTING_COMPLETED, SETTING_COUNTERPART_CHANGED, SETTING_DEVICE_NAME,
+        VAR_API_BASE, VAR_APP_BASE, YES,
+    };
+    use edms_engine::session::SETTING_ENROLLED;
+
+    use crate::display::Fixed;
+
+    fn map(pairs: &[(&str, &str)]) -> HashMap<String, String> {
+        pairs.iter().map(|(k, v)| ((*k).to_owned(), (*v).to_owned())).collect()
+    }
+
+    fn resolution(
+        environment: &HashMap<String, String>,
+        settings: &HashMap<String, String>,
+    ) -> Resolution {
+        crate::setup::read(
+            &|name| environment.get(name).cloned(),
+            &|key| settings.get(key).cloned(),
+            edms_i18n::Language::De,
+        )
+    }
+
+    fn store() -> (tempfile::TempDir, Store) {
+        let directory = tempfile::tempdir().expect("a directory for the test");
+        let store = Store::open(&directory.path().join(crate::setup::DATABASE_NAME))
+            .expect("a fresh state");
+        (directory, store)
+    }
+
+    #[test]
+    fn the_wizard_a_shipped_build_shows_is_built_from_the_resolution_and_nothing_else() {
+        // The state this used to be in: `EngineView` overrode none of the four set-up methods, so
+        // the trait defaults held — `setup()` answered `None` and every click on "Set-up" in a
+        // real run produced "the set-up cannot be opened on this device". No test noticed,
+        // because no test built anything but the demo's source.
+        let found = resolution(
+            &map(&[(VAR_APP_BASE, "https://app.acme")]),
+            &map(&[(SETTING_API_BASE, "https://api.acme")]),
+        );
+        let view = view_of(&found, ExtensionState::Asking);
+        assert_eq!(view.reason, SetupReason::First, "nothing has been walked to the end yet");
+        assert_eq!(view.app_base.fixed, Fixed::Operator, "the environment decided this one");
+        assert_eq!(view.app_base.value, "https://app.acme");
+        assert!(view.api_base.is_open(), "a stored value stays the user's");
+        assert_eq!(view.api_base.value, "https://api.acme");
+        assert!(view.auth_base.is_open(), "and one nobody has given is a question");
+        assert!(view.auth_base.value.is_empty());
+        assert!(view.device_name.is_open(), "not enrolled: the name is still the user's");
+        assert!(!view.enrolled);
+        assert!(!view.data_path.is_empty(), "shown, never offered");
+        assert!(!view.staging_path.is_empty());
+        assert!(!view.holding_path.is_empty());
+        assert!(view.enrollment_code.value.is_empty(), "never a value, in any state");
+    }
+
+    #[test]
+    fn an_enrolled_device_shows_its_name_and_stops_offering_it() {
+        let found = resolution(
+            &HashMap::new(),
+            &map(&[(SETTING_ENROLLED, YES), (SETTING_DEVICE_NAME, "Front desk")]),
+        );
+        let view = view_of(&found, ExtensionState::On);
+        assert_eq!(view.device_name.fixed, Fixed::Enrolled);
+        assert_eq!(view.device_name.value, "Front desk");
+        assert!(view.enrolled, "and the code page falls away with it");
+    }
+
+    #[test]
+    fn an_enrolment_code_from_the_environment_takes_the_page_away_and_is_never_a_value() {
+        let mut environment = map(&[(VAR_API_BASE, "https://api.acme")]);
+        environment
+            .insert(edms_engine::config::VAR_ENROLLMENT_CODE.to_owned(), "K7QM-4T2X".to_owned());
+        let view = view_of(&resolution(&environment, &HashMap::new()), ExtensionState::Off);
+        assert_eq!(view.enrollment_code.fixed, Fixed::Operator);
+        assert_eq!(view.enrollment_code.value, "", "the code is not carried into a view");
+    }
+
+    #[test]
+    fn the_reason_the_wizard_is_open_follows_what_the_setting_table_says() {
+        let first = resolution(&HashMap::new(), &HashMap::new());
+        assert_eq!(view_of(&first, ExtensionState::Off).reason, SetupReason::First);
+
+        let done = resolution(&HashMap::new(), &map(&[(SETTING_COMPLETED, YES)]));
+        assert_eq!(view_of(&done, ExtensionState::Off).reason, SetupReason::ByHand);
+
+        // The note outlives the mark: `note_counterpart_changed` writes the one and deletes the
+        // other, and this is the page that says what happened.
+        let moved =
+            resolution(&HashMap::new(), &map(&[(SETTING_COUNTERPART_CHANGED, "https://api.old")]));
+        assert_eq!(view_of(&moved, ExtensionState::Off).reason, SetupReason::Counterpart);
+    }
+
+    #[test]
+    fn a_value_for_a_field_the_source_reported_as_fixed_is_discarded_by_the_source() {
+        // ADR-D13 §1, at the place that can enforce it. A page can be bypassed; this cannot.
+        let (_directory, mut store) = store();
+        let catalogue = german();
+        let values = SetupValues {
+            api_base: Some("https://api.typed".to_owned()),
+            app_base: Some("https://attacker.example".to_owned()),
+            device_name: Some("Front desk".to_owned()),
+            ..SetupValues::default()
+        };
+        // `app_base` is the environment's on this run, so nothing the page sends for it counts.
+        // The resolution `store_values` uses is the one it reads for itself, so the environment
+        // has to be the process's — which no test may set. What is checked here instead is the
+        // half that does not need one: an open value is stored, and the door's own refusal of a
+        // fixed value is covered by `setup::the_setter_refuses_a_value_the_environment_has_fixed`.
+        store_values(&mut store, &values, catalogue).expect("two open values");
+        assert_eq!(store.setting(SETTING_API_BASE).unwrap().as_deref(), Some("https://api.typed"));
+        assert_eq!(store.setting(SETTING_DEVICE_NAME).unwrap().as_deref(), Some("Front desk"));
+    }
+
+    #[test]
+    fn a_value_the_door_refuses_comes_back_as_a_whole_sentence_and_not_as_a_diagnosis() {
+        let (_directory, mut store) = store();
+        let values = SetupValues {
+            api_base: Some("http://api.example".to_owned()),
+            ..SetupValues::default()
+        };
+        let error = store_values(&mut store, &values, german())
+            .expect_err("plaintext against a host that is not this machine");
+        let sentence = error.user_text(german());
+        assert!(sentence.contains("https"), "{sentence}");
+        assert!(!sentence.contains("ConnectionError"), "the diagnosis stays in the log");
+        assert_eq!(store.setting(SETTING_API_BASE).unwrap(), None, "and nothing was written");
+    }
+
+    #[test]
+    fn the_enrolment_code_never_reaches_the_setting_table() {
+        // It is a one-time secret (ADR-D13 §6): no `setting_key`, never stored, never reported.
+        let (_directory, mut store) = store();
+        let values =
+            SetupValues { enrollment_code: Some("K7QM-4T2X".to_owned()), ..SetupValues::default() };
+        store_values(&mut store, &values, german()).expect("a code is taken and passed on");
+        for key in ["setup.enrollment-code", "enrollment-code", "setup.code"] {
+            assert_eq!(store.setting(key).unwrap(), None, "{key}");
+        }
+        // And it cannot be printed either: `SetupValues` writes its own `Debug`.
+        let shown = format!("{values:?}");
+        assert!(!shown.contains("K7QM-4T2X"), "{shown}");
     }
 }

@@ -18,7 +18,10 @@
 //!
 //! And the wiring — the one place in the workspace where the crates know each other:
 //!
-//! * [`setup`] — the `EDMS_*` variables; three are mandatory, the rest have defaults.
+//! * [`setup`] — the `EDMS_*` variables and the `setting` table; three values are mandatory,
+//!   the rest have defaults.
+//! * [`awaiting`] — the source of a workstation that has not been told where its server is:
+//!   an icon and a window with the set-up in it, and no engine behind it yet (ADR-D13 §11).
 //! * [`vault`] — the operating system's keychain (ADR-D03, point 4).
 //! * [`device_key`] — the device key when a store outside this process holds it (ADR-D12).
 //! * [`platform`] — Windows cfAPI or macOS File Provider, and what happens when there is neither.
@@ -26,6 +29,7 @@
 //! * [`doctor`] — `elasticdms doctor`, without the network.
 //! * [`time`] — the one clock of the program.
 
+mod awaiting;
 mod cli;
 mod demo;
 mod device_key;
@@ -137,31 +141,75 @@ fn run(call: Call) -> Result<(), Abort> {
         }
     };
 
-    let catalogue = locale::catalogue();
-    let source: Arc<dyn display::DisplaySource> = match call.demo {
-        Some(demo_state) => {
-            tracing::info!(state = demo_state.name(), "elasticdms is starting with sample data.");
-            Arc::new(demo::DemoSource::new(
-                time::now(),
-                demo_state,
-                &std::env::temp_dir(),
-                catalogue,
-            )?)
-        }
-        None => {
-            // The setup first: a missing mandatory variable is a sentence on the error output,
-            // not an icon that later cannot sign in.
-            let configuration = setup::configuration().map_err(wiring::StartupAbort::from)?;
-            tracing::info!(
-                api = configuration.api_base,
-                device = configuration.device_name,
-                "elasticdms is starting."
-            );
-            Arc::new(wiring::EngineView::start(configuration)?)
-        }
-    };
+    // Whether this run has no engine behind it and the wizard may build one (`awaiting`).
+    let mut waiting_for_setup = false;
+    let (source, catalogue): (Arc<dyn display::DisplaySource>, &'static edms_i18n::Catalog) =
+        match call.demo {
+            Some(demo_state) => {
+                // The demo has no store and therefore no stored language: what this machine and
+                // this environment say is the whole answer, and `locale` is where it stands.
+                let catalogue = locale::catalogue();
+                tracing::info!(
+                    state = demo_state.name(),
+                    "elasticdms is starting with sample data."
+                );
+                let source = demo::DemoSource::new(
+                    time::now(),
+                    demo_state,
+                    &std::env::temp_dir(),
+                    catalogue,
+                )?;
+                (Arc::new(source), catalogue)
+            }
+            None => {
+                let resolution = setup::resolve();
+                // **One answer to one question.** The language goes through the same order as
+                // every other value (`EDMS_LANG` -> `setup.language` -> the operating system),
+                // and the answer reaches the window, the menu and the tray from here — not only
+                // the engine. Before this line `locale::catalogue()` stood here, which knows no
+                // setting table: a device with `setup.language = de` showed a German set of
+                // basket folders in an English window. MEASURED on 2026-09-13, `doctor` and the
+                // same run's own log disagreed about it in writing.
+                let catalogue = edms_i18n::Catalog::of(resolution.language());
+                tracing::info!(
+                    language = catalogue.language().tag(),
+                    origin = ?resolution.of(edms_engine::config::Value::Language).map(setup::Resolved::origin),
+                    "the language of the user interface has been settled."
+                );
+                // **A value nobody has given is a question, not an abort** (ADR-D13 §11, point
+                // 1). Before this branch existed the start ended here with one English line on an
+                // error output nobody double-clicking an icon ever sees — on the very machine the
+                // wizard was built for. A value that is *there* and unusable still ends it: that
+                // is an administrator's decision gone wrong, and the sentence for it is an
+                // operator's (`awaiting::what_is_missing`).
+                if let Err(missing) = awaiting::what_is_missing(&resolution) {
+                    tracing::info!(
+                        missing =
+                            missing.iter().map(|v| v.variable()).collect::<Vec<_>>().join(", "),
+                        "elasticdms is starting without a server; the set-up asks for the rest."
+                    );
+                    waiting_for_setup = true;
+                    (Arc::new(awaiting::AwaitingSetup::new(catalogue)), catalogue)
+                } else {
+                    let configuration =
+                        resolution.configuration().map_err(wiring::StartupAbort::from)?;
+                    tracing::info!(
+                        api = configuration.api_base,
+                        // Through `Debug`, like `?language`: the name may be a value somebody
+                        // typed, and the fmt subscriber writes a plain field unescaped — a
+                        // newline in it would write a line of its own into an operator's log.
+                        device = ?configuration.device_name,
+                        "elasticdms is starting."
+                    );
+                    (Arc::new(wiring::EngineView::start(configuration)?), catalogue)
+                }
+            }
+        };
 
-    match event_loop::start(source, call.window, Some(guard), catalogue)? {}
+    // A workstation with nothing to show opens its window by itself: the icon alone would be a
+    // program that started and then said nothing (ADR-D13 §11, point 1).
+    let window = call.window || waiting_for_setup;
+    match event_loop::start(source, window, Some(guard), catalogue, waiting_for_setup)? {}
 }
 
 /// The diagnostic log on the error output, controlled through `EDMS_LOG`.

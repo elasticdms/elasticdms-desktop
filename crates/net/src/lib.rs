@@ -48,13 +48,15 @@ mod access;
 mod binding;
 mod challenge;
 mod clock;
-mod connection;
 mod error;
 mod idempotency;
 mod result;
 mod secret;
 mod transport;
 
+// Public since ADR-D13 §8: the set-up judges a typed address with `connection::check`, the very
+// function the environment path goes through.
+pub mod connection;
 pub mod server;
 
 pub use access::ServerAccess;

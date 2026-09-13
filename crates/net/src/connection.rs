@@ -166,7 +166,16 @@ impl Connection {
 ///
 /// The slash falls here and only here: `edms_wire::basics::is_below` compares later against
 /// `<base>/`, and a base with two meanings would yield two comparisons.
-fn check(field: &'static str, address: &str) -> Result<String, ConnectionError> {
+///
+/// **Public since ADR-D13 §8**, because the set-up has to judge an address a human being typed
+/// before it stores it — and a second judgement about the same string would be a second answer.
+/// Whoever asks gets back what is to be stored, not merely a yes.
+///
+/// # Errors
+///
+/// An address without a scheme or host, one carrying userinfo, one with a query or a fragment, and
+/// plaintext against a host other than the loopback.
+pub fn check(field: &'static str, address: &str) -> Result<String, ConnectionError> {
     let trimmed = address.trim_end_matches('/');
     let error = |reason| ConnectionError::Address { field, address: address.to_owned(), reason };
     let (scheme, rest) =
@@ -177,6 +186,18 @@ fn check(field: &'static str, address: &str) -> Result<String, ConnectionError> 
     if rest.contains('?') || rest.contains('#') {
         return Err(error("a base carries neither query nor fragment"));
     }
+    // MEASURED on 2026-09-13, before this line stood here: `https://api.elasticdms.io@attacker.example`
+    // came back `Ok`. It reads to a human like the right server, and as `app_base` it would become
+    // the yardstick every later "is this address ours" question is measured against
+    // (`edms_wire::basics::is_below`). The app refuses exactly this for browser targets and says
+    // why (`event_loop::check_login_address`); the refusal belongs where the value enters, not only
+    // where it is used.
+    if authority(rest).contains('@') {
+        return Err(error(
+            "an authority carries no userinfo; in `https://api.example@other.example` the host is \
+             `other.example`",
+        ));
+    }
     match scheme.to_ascii_lowercase().as_str() {
         "https" => Ok(trimmed.to_owned()),
         "http" if shows_on_loop(rest) => Ok(trimmed.to_owned()),
@@ -185,13 +206,18 @@ fn check(field: &'static str, address: &str) -> Result<String, ConnectionError> 
     }
 }
 
+/// What stands between `://` and the first slash — host, port, and (refused above) userinfo.
+fn authority(rest: &str) -> &str {
+    rest.split('/').next().unwrap_or(rest)
+}
+
 /// Whether the host behind `://` is the local loopback.
 ///
 /// Compared is the host up to the colon of the port and up to the first slash;
 /// `127.0.0.1.example.org` is therefore **not** the loopback — otherwise the exception for the mock
 /// would be a way to permit plaintext against a foreign host.
 fn shows_on_loop(rest: &str) -> bool {
-    let without_path = rest.split('/').next().unwrap_or(rest);
+    let without_path = authority(rest);
     // IPv6 stands in square brackets; the colon of the port stands behind the closing one, the
     // colons of the address before it. Without brackets the first colon separates off the port.
     let host = match without_path.find(']') {
@@ -259,6 +285,35 @@ mod tests {
                 .expect_err("no usable base");
             assert!(matches!(error, ConnectionError::Address { field: "API base", .. }));
         }
+    }
+
+    #[test]
+    fn an_address_that_hides_the_host_behind_userinfo_is_not_a_base() {
+        // MEASURED on 2026-09-13: until that day this address came back `Ok`. It reads like our
+        // API and points at `attacker.example`; as `app_base` it would decide what counts as "our
+        // own web interface" for every browser prompt afterwards (ADR-D13 §8).
+        for address in [
+            "https://api.elasticdms.io@attacker.example",
+            "http://127.0.0.1@attacker.example",
+            "http://attacker.example@127.0.0.1",
+            "https://user:secret@api.example",
+        ] {
+            let error = check("API base", address).expect_err("{address} hides its host");
+            assert!(
+                matches!(&error, ConnectionError::Address { reason, .. } if reason.contains("userinfo")),
+                "{address}: {error}"
+            );
+        }
+    }
+
+    #[test]
+    fn an_at_sign_behind_the_first_slash_is_a_path_and_no_reason_to_refuse() {
+        // The refusal reads the authority, not the whole string: `/@handle` is an ordinary path
+        // segment, and a base that carried one would otherwise be turned away for nothing.
+        assert_eq!(
+            check("API base", "https://api.example/@acme").expect("the host is `api.example`"),
+            "https://api.example/@acme"
+        );
     }
 
     #[test]

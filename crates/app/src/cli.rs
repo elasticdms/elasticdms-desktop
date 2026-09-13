@@ -35,7 +35,8 @@ Usage: elasticdms [--demo[=STATE]] [--window]
 If elasticdms is already running, a second call creates no second icon but opens the window of
 the running instance.
 
-Environment (without the first three elasticdms does not start):
+Environment (without the first three, and with nothing stored for them, elasticdms starts into its
+set-up and asks for them):
   EDMS_API_BASE        Base address of the elasticdms API.
   EDMS_AUTH_BASE       Base address of the authorization server.
   EDMS_APP_BASE        Base address of the web interface; a browser is opened only there.
@@ -48,6 +49,14 @@ Environment (without the first three elasticdms does not start):
   EDMS_VAULT           keychain (the default) or memory (development runs only).
   EDMS_LANG            Language of the user interface: de or en. Without it the operating
                        system's choice holds, and English where it names neither.
+
+The three addresses, the device name, the folder's root and the language can also be set in
+elasticdms itself, in its set-up; they are then stored in the local state. A value set here wins
+over the stored one, for every value and without an exception list: setting a variable is the act
+of taking the choice away, and the set-up then shows the value instead of offering it. The other
+variables are set here and nowhere else. A variable that is set to something unusable does end the
+start, and with a sentence on this output: an administrator's decision is not the set-up's to
+overrule.
 
 Diagnostics on the error output: EDMS_LOG=debug (filters as in tracing).
 ";

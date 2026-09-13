@@ -57,6 +57,8 @@ pub mod home;
 pub mod identifier;
 /// The Mac's language — read here, because Objective-C lives in this crate and nowhere else.
 pub mod locale;
+/// The Mac's own name — read here, for the same reason as the language.
+pub mod machine;
 #[cfg(target_os = "macos")]
 mod thread;
 

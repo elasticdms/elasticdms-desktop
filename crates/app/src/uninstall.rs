@@ -302,6 +302,13 @@ fn run_task(task: &Task) -> (String, bool) {
 
 /// Removes the local state — all of it, unless files are still lying in the holding directory.
 ///
+/// **The set-up's settings go with it, and that is why they live in the `setting` table.** The
+/// three addresses, the device name, the mirror's place, the language, the completed mark and the
+/// three `counterpart.*` keys all lie in `state.sqlite` and nowhere else (ADR-D13 §6): a JSON file
+/// beside the binary, an `HKCU` key or a plist would each need a line here **and** one in
+/// `packaging/macos/elasticdms-uninstall.sh`, and a forgotten line there is a tenant address that
+/// outlives the uninstallation. Nothing was added to this function for them, and nothing had to be.
+///
 /// A file that was dropped into a mail basket lies there until the server has confirmed the
 /// ingest; until then the local copy is the only one (ADR-D08 point 5, GoBD completeness).
 /// A `remove_dir_all` over the whole state would take those with it, and whoever uninstalls would
@@ -602,6 +609,69 @@ mod tests {
         let (row, objection) = run_task(&Task::State(state.clone()));
         assert!(!objection, "{row}");
         assert!(!state.exists(), "an empty holding directory keeps nothing: {row}");
+    }
+
+    /// Whether this byte sequence lies anywhere under `directory` — database, write-ahead log or
+    /// shared-memory file, whichever of them SQLite happens to be holding it in.
+    fn lies_anywhere(directory: &Path, needle: &str) -> bool {
+        let Ok(entries) = fs::read_dir(directory) else { return false };
+        entries.flatten().any(|entry| {
+            let path = entry.path();
+            if path.is_dir() {
+                return lies_anywhere(&path, needle);
+            }
+            fs::read(&path).is_ok_and(|bytes| {
+                bytes.windows(needle.len()).any(|part| part == needle.as_bytes())
+            })
+        })
+    }
+
+    #[test]
+    fn the_set_up_settings_go_with_the_local_state_and_needed_no_line_of_their_own() {
+        // ADR-D13 §6 rests on exactly this: the tenant's addresses live in the `setting` table
+        // because the uninstall already removes the file that holds it. The test writes them the
+        // way the set-up does, proves they really lie on the disk, and then reads the disk again.
+        // The harder of the two branches: files still lie in the holding directory, so the tree is
+        // taken apart piece by piece instead of in one `remove_dir_all`.
+        let tmp = tempfile::tempdir().unwrap();
+        let state = tmp.path().join(APPLICATION);
+        // Where the database really lies on Windows: `directories` puts `data` between the
+        // application directory and our files (see `DATA`).
+        let data = state.join(DATA);
+        let holding = data.join(HOLDING_NAME);
+        fs::create_dir_all(&holding).unwrap();
+        fs::write(holding.join("rechnung.pdf"), b"not confirmed yet").unwrap();
+        {
+            let mut store = edms_store::Store::open(&data.join(DATABASE_NAME)).unwrap();
+            store.set_setting(edms_engine::config::SETTING_API_BASE, "https://api.acme").unwrap();
+            store
+                .set_setting(edms_engine::config::SETTING_COUNTERPART_API_BASE, "https://api.acme")
+                .unwrap();
+            store
+                .set_setting(edms_engine::config::SETTING_COMPLETED, edms_engine::config::YES)
+                .unwrap();
+            store.set_setting(edms_engine::config::SETTING_DEVICE_NAME, "Front desk").unwrap();
+        }
+        assert!(
+            lies_anywhere(&state, "https://api.acme"),
+            "the test would be green out of blindness"
+        );
+
+        let (row, objection) = run_task(&Task::State(state.clone()));
+        assert!(!objection, "{row}");
+        assert!(!data.join(DATABASE_NAME).exists(), "the database goes: {row}");
+        assert!(
+            !lies_anywhere(&state, "https://api.acme"),
+            "a tenant address outlived the uninstall: {row}"
+        );
+        assert!(
+            !lies_anywhere(&state, "Front desk"),
+            "the device name outlived the uninstall: {row}"
+        );
+        assert!(
+            holding.join("rechnung.pdf").exists(),
+            "and what the server has not confirmed stays"
+        );
     }
 
     #[test]

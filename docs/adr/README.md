@@ -21,8 +21,9 @@ Where an ADR here departs from them, it says so and names the place.
 | [ADR-D10](ADR-D10-user-interface-language.md) | The language of the user interface: a catalogue, not a hard-coded German | Proposed — the three German names corrected 2026-09-12, the last two of them and the identity retired 2026-09-13 |
 | [ADR-D11](ADR-D11-namespace-v2.md) | Namespace v2: three branches, and the drop target inside the mirror | Accepted — decision of 2026-09-12 |
 | [ADR-D12](ADR-D12-hardware-bound-device-key.md) | The hardware-bound device key: one trait, two platforms, and a fallback that says so | Proposed — the seam is built, the two platform calls are not |
+| [ADR-D13](ADR-D13-setup-wizard.md) | The set-up wizard: what the administrator decides, and what the user sees of it | Proposed — decided, not yet built |
 
-“Proposed” means: built as described, but not yet confirmed by the owner. ADR-D12 is the one
-exception and says so in its own status line — there the seam is built and the two platform calls
-behind it are not. Every one of these ADRs names the place in the code where a different decision
-would start.
+“Proposed” means: built as described, but not yet confirmed by the owner. Two say otherwise in
+their own status line: in ADR-D12 the seam is built and the two platform calls behind it are not,
+and ADR-D13 is decided with nothing of it built yet. Every one of these ADRs names the place in the
+code where a different decision would start.

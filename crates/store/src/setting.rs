@@ -2,6 +2,23 @@
 //!
 //! For what the app remembers (page last shown, window size) — **never for secrets** (ADR-D03,
 //! point 4). The store cannot check that; it can only say that it would be wrong.
+//!
+//! ## Since ADR-D13 this table also carries which server this client speaks to
+//!
+//! The set-up writes the three base addresses, the device name, the mirror's place, the language
+//! and its completed mark here under `setup.*`, and the counterpart the device enrolled against
+//! under `counterpart.*`. **They live here and nowhere else**, and the reason is a measurement, not
+//! a preference: the uninstall removes the directory this file lies in — on Windows
+//! `uninstall::clear_state`, on macOS `packaging/macos/elasticdms-uninstall.sh`. A JSON file beside
+//! the binary, an `HKCU` key or a plist would each need a new line in both of those paths, and a
+//! forgotten line there is a tenant address that outlives the uninstallation.
+//!
+//! That is also why the enrolment code is **not** among them: it is a one-time secret from the
+//! console, and the sentence above about secrets holds for it exactly as written.
+//!
+//! The keys are dotted, lower-case and hyphenated — `device.enrolled`, `delivery.cursor`,
+//! `session.identity-guessed`, `setup.api-base`. Each of them is a constant in the crate that
+//! writes it; the store knows only that a key is text.
 
 use rusqlite::{OptionalExtension, params};
 

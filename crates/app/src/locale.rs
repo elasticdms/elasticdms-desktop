@@ -12,6 +12,14 @@
 //! 2. The operating system's list of interface languages, best first.
 //! 3. English, and the fall-back is written into the diagnostic log once.
 //!
+//! **This is the machine's answer, not the last word.** A real start resolves the language through
+//! `crate::setup`, which puts the `setting` table between the environment and the operating system
+//! (`setup.language`, ADR-D13 §6) and hands what comes out to `event_loop::start`. What stands
+//! here is the third step of that order, and the whole of it for a `--demo` run, which has no
+//! store to hold a setting in. Asking [`catalogue`] on a real start would be a second answer to
+//! one question — and it was: a device with `setup.language = de` used to show a German set of
+//! basket folders in an English window.
+//!
 //! **Once at the start, not on every access.** A language that changed under a running program
 //! would mean a menu in one language and a window in another; whoever switches the system
 //! language restarts elasticdms, as with every other program on both platforms.
@@ -20,15 +28,21 @@ use std::sync::OnceLock;
 
 use edms_i18n::{Catalog, Language};
 
-/// The language of this run.
+/// What this machine and this environment say the language is — the third step of the order, and
+/// the default `crate::setup` falls through to.
 pub fn language() -> Language {
     static HELD: OnceLock<Language> = OnceLock::new();
     *HELD.get_or_init(|| {
         let chosen = resolve();
+        // **Not "the language of the user interface".** That is what this line used to say, and
+        // it was the second of two answers to one question: with `setup.language = de` in the
+        // store, `doctor` printed `Language de (setting)` while this line of the same run said
+        // `en`. The window's language is `setup::Resolution::language`, and `main.rs` logs it
+        // where it settles it.
         tracing::info!(
             language = chosen.tag(),
             offered = system_languages().join(", "),
-            "the language of the user interface has been settled."
+            "the language this machine offers has been read."
         );
         chosen
     })
