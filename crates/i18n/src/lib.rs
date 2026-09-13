@@ -243,6 +243,7 @@ catalogue_keys! {
     WINDOW_BUTTON_SIGN_IN = "window.button.sign_in";
     WINDOW_BUTTON_FOLDER = "window.button.folder";
     WINDOW_BUTTON_BASKETS = "window.button.baskets";
+    WINDOW_BUTTON_SETUP = "window.button.setup";
     WINDOW_LOGIN_TITLE = "window.login.title";
     WINDOW_LOGIN_TEXT = "window.login.text";
     WINDOW_LOGIN_ADDRESS = "window.login.address";
@@ -256,6 +257,122 @@ catalogue_keys! {
     WINDOW_LIST_REDACTED_TITLE = "window.list.redacted_title";
     WINDOW_FOLDER_MISSING = "window.folder_missing";
     WINDOW_BASKETS_MISSING = "window.baskets_missing";
+
+    // ── The set-up wizard (ADR-D13) ──────────────────────────────────────────────────────────
+    //
+    // Unconditional, on both platforms, although two of its pages exist on one platform only
+    // (ADR-D13 §10): `no_catalogue_carries_a_key_the_program_does_not_ask_for` measures the two
+    // TOML files against this list, so a `cfg` here would make the Windows build of the test
+    // suite red the day somebody ran it — while a page behind a `cfg` costs the catalogue
+    // nothing.
+    SETUP_TITLE = "setup.title";
+    SETUP_STEP = "setup.step";
+    SETUP_BACK = "setup.back";
+    SETUP_NEXT = "setup.next";
+    SETUP_FINISH = "setup.finish";
+    SETUP_NOT_AVAILABLE = "setup.not_available";
+
+    // Why a value stands there as a line of text and not as a field (ADR-D13 §3: a disabled
+    // field is a field that failed). None of these four names the variable — that is `doctor`'s
+    // job, in English, outside the catalogue.
+    SETUP_FIXED_OPERATOR = "setup.fixed.operator";
+    SETUP_FIXED_ENROLLED = "setup.fixed.enrolled";
+    SETUP_FIXED_MIRROR = "setup.fixed.mirror";
+    SETUP_FIXED_VARIABLE = "setup.fixed.variable";
+    SETUP_FACTS_TITLE = "setup.facts.title";
+
+    SETUP_WELCOME_STEP = "setup.welcome.step";
+    SETUP_WELCOME_TITLE = "setup.welcome.title";
+    SETUP_WELCOME_TEXT = "setup.welcome.text";
+    SETUP_WELCOME_RECORDED = "setup.welcome.recorded";
+    SETUP_WELCOME_LANGUAGE = "setup.welcome.language";
+    SETUP_WELCOME_LANGUAGE_HINT = "setup.welcome.language_hint";
+    // The languages name themselves, and therefore read the same in both catalogues (see
+    // `SAME_ON_PURPOSE` in tests/catalogs.rs): whoever lands in a window they cannot read has to
+    // be able to find their own language in the list all the same.
+    SETUP_LANGUAGE_DE = "setup.language.de";
+    SETUP_LANGUAGE_EN = "setup.language.en";
+    SETUP_WELCOME_COUNTERPART = "setup.welcome.counterpart";
+
+    SETUP_SERVER_STEP = "setup.server.step";
+    SETUP_SERVER_TITLE = "setup.server.title";
+    SETUP_SERVER_TEXT = "setup.server.text";
+    SETUP_SERVER_API = "setup.server.api";
+    SETUP_SERVER_API_HINT = "setup.server.api_hint";
+    SETUP_SERVER_AUTH = "setup.server.auth";
+    SETUP_SERVER_AUTH_HINT = "setup.server.auth_hint";
+    SETUP_SERVER_APP = "setup.server.app";
+    SETUP_SERVER_APP_HINT = "setup.server.app_hint";
+
+    SETUP_WORKSTATION_STEP = "setup.workstation.step";
+    SETUP_WORKSTATION_TITLE = "setup.workstation.title";
+    SETUP_WORKSTATION_TEXT = "setup.workstation.text";
+    // The same page with the folder's place on it — Windows, where `window::MIRROR` puts that
+    // field in. The page picks by what the document carries, not by a platform name.
+    SETUP_WORKSTATION_TEXT_WITH_MIRROR = "setup.workstation.text_with_mirror";
+    SETUP_WORKSTATION_DEVICE = "setup.workstation.device";
+    SETUP_WORKSTATION_DEVICE_HINT = "setup.workstation.device_hint";
+    SETUP_WORKSTATION_MIRROR = "setup.workstation.mirror";
+    SETUP_WORKSTATION_MIRROR_HINT = "setup.workstation.mirror_hint";
+    SETUP_WORKSTATION_PLACES = "setup.workstation.places";
+    SETUP_WORKSTATION_PLACES_HINT = "setup.workstation.places_hint";
+    SETUP_WORKSTATION_DATA = "setup.workstation.data";
+    SETUP_WORKSTATION_STAGING = "setup.workstation.staging";
+    SETUP_WORKSTATION_HOLDING = "setup.workstation.holding";
+
+    SETUP_CODE_STEP = "setup.code.step";
+    SETUP_CODE_TITLE = "setup.code.title";
+    SETUP_CODE_TEXT = "setup.code.text";
+    SETUP_CODE_LABEL = "setup.code.label";
+    SETUP_CODE_HINT = "setup.code.hint";
+
+    SETUP_SIGNIN_STEP = "setup.signin.step";
+    SETUP_SIGNIN_TITLE = "setup.signin.title";
+    SETUP_SIGNIN_TEXT = "setup.signin.text";
+    SETUP_SIGNIN_WAITING = "setup.signin.waiting";
+    SETUP_SIGNIN_SIGNED_IN = "setup.signin.signed_in";
+    SETUP_SIGNIN_SKIP = "setup.signin.skip";
+
+    SETUP_EXTENSION_STEP = "setup.extension.step";
+    SETUP_EXTENSION_TITLE = "setup.extension.title";
+    SETUP_EXTENSION_TEXT = "setup.extension.text";
+    SETUP_EXTENSION_PATH = "setup.extension.path";
+    SETUP_EXTENSION_BUTTON = "setup.extension.button";
+    SETUP_EXTENSION_AGAIN = "setup.extension.again";
+    SETUP_EXTENSION_ASKING = "setup.extension.asking";
+    SETUP_EXTENSION_OFF = "setup.extension.off";
+    SETUP_EXTENSION_ON = "setup.extension.on";
+    SETUP_EXTENSION_SKIP = "setup.extension.skip";
+
+    SETUP_DONE_STEP = "setup.done.step";
+    SETUP_DONE_TITLE = "setup.done.title";
+    SETUP_DONE_TEXT = "setup.done.text";
+    SETUP_DONE_FOLDER = "setup.done.folder";
+    SETUP_DONE_REOPEN = "setup.done.reopen";
+
+    // What is wrong with a typed value. The shape only, and never a red border on its own
+    // (ADR-D13 §8: the check is the one `edms_net` makes, the network is not asked).
+    SETUP_WRONG_EMPTY = "setup.wrong.empty";
+    SETUP_WRONG_SCHEME = "setup.wrong.scheme";
+    SETUP_WRONG_HOST = "setup.wrong.host";
+    SETUP_WRONG_PLAINTEXT = "setup.wrong.plaintext";
+    SETUP_WRONG_USERINFO = "setup.wrong.userinfo";
+    SETUP_WRONG_QUERY = "setup.wrong.query";
+    SETUP_WRONG_TOO_LONG = "setup.wrong.too_long";
+    SETUP_WRONG_PATH_ABSOLUTE = "setup.wrong.path_absolute";
+    SETUP_WRONG_PATH_TAKEN = "setup.wrong.path_taken";
+    SETUP_WRONG_CODE = "setup.wrong.code";
+
+    // What the store's own door says when it refuses a value the page let through
+    // (`setup::SettingRefused::user_key`). The page checks the shape; these are the answers only
+    // the app can give, and they reach the user through the wizard's own message line.
+    SETUP_WRONG_ADDRESS = "setup.wrong.address";
+    SETUP_WRONG_NOT_YOURS = "setup.wrong.not_yours";
+    SETUP_WRONG_PATH_HOLDS = "setup.wrong.path_holds";
+    SETUP_WRONG_PATH_NOT_EMPTY = "setup.wrong.path_not_empty";
+    SETUP_WRONG_CONTROL = "setup.wrong.control";
+    SETUP_WRONG_LANGUAGE = "setup.wrong.language";
+    SETUP_WRONG_NOT_STORED = "setup.wrong.not_stored";
 
     // ── The mirror: what stands in Explorer and in Finder ────────────────────────────────────
     MIRROR_BASKETS = "mirror.baskets";
@@ -271,6 +388,8 @@ catalogue_keys! {
     NOTICE_STOPPING = "notice.stopping";
     NOTICE_AWAITING_APPROVAL = "notice.awaiting_approval";
     NOTICE_ENROLLMENT_CODE_MISSING = "notice.enrollment_code_missing";
+    NOTICE_SETUP_NEEDED = "notice.setup_needed";
+    NOTICE_SETUP_RESTART = "notice.setup_restart";
     NOTICE_SESSION_ENDED = "notice.session_ended";
     NOTICE_DEVICE_CODE_EXPIRED = "notice.device_code_expired";
     NOTICE_LOGIN_REJECTED = "notice.login_rejected";

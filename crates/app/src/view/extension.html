@@ -1,0 +1,25 @@
+<!--
+  "Switch the folder on" — **macOS only**. `window::EXTENSION` puts it into view.html, in place
+  of the marker there; on every other platform it puts nothing.
+
+  ADR-D13 §10: the page stands behind a `cfg` and not behind a runtime `if`, because the wizard's
+  Back and Next are indices into the steps that exist. On Windows this markup is not in the
+  binary, the document therefore carries no element with `data-page="extension"`, and the step
+  list — which view.js reads out of the document — cannot contain it. There is no index that
+  reaches a step that is not there.
+
+  The state line is filled by the script from three catalogue sentences (asking, off, on); a
+  timeout counts as "not on yet" and never as an error (ADR-D13 §9). The button leads to System
+  Settings through the app, not through the web view: this page navigates nowhere.
+-->
+        <section class="setup-page" data-page="extension" data-step="setup.extension.step" hidden>
+          <h3 data-text="setup.extension.title"></h3>
+          <p data-text="setup.extension.text"></p>
+          <p class="setup-path" data-text="setup.extension.path"></p>
+          <p class="setup-state" id="setup-extension-state" aria-live="polite"></p>
+          <div class="setup-actions">
+            <button type="button" id="setup-extension-open" data-text="setup.extension.button"></button>
+            <button type="button" id="setup-extension-again" data-text="setup.extension.again"></button>
+          </div>
+          <p class="setup-hint" data-text="setup.extension.skip"></p>
+        </section>

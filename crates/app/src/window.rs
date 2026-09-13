@@ -47,6 +47,28 @@ const TEMPLATE: &str = include_str!("view/view.html");
 const STYLE: &str = include_str!("view/view.css");
 const SCRIPT: &str = include_str!("view/view.js");
 
+/// The set-up wizard's page for switching the extension on — **macOS, and nowhere else**.
+///
+/// ADR-D13 §10: behind a `cfg`, not behind a runtime `if`. On Windows this markup is not in the
+/// binary; the document then carries no element with `data-page="extension"`, the step list
+/// view.js reads out of the document cannot contain it, and the wizard's Back and Next — which
+/// are indices into that list — have no index that reaches it. A page that exists but never
+/// shows is a page a wrong index can reach.
+#[cfg(target_os = "macos")]
+const EXTENSION: &str = include_str!("view/extension.html");
+/// Nothing, on every platform whose folder needs no switching on.
+#[cfg(not(target_os = "macos"))]
+const EXTENSION: &str = "";
+
+/// Where the mirror lies — **Windows, and nowhere else**, for the same reason and the mirror
+/// image of it: outside the Windows branch `platform.rs` reads `let _ = mirror_path;`, so the
+/// field would be a question whose answer is thrown away (ADR-D13, measurement 5).
+#[cfg(target_os = "windows")]
+const MIRROR: &str = include_str!("view/mirror.html");
+/// Nothing, where the root is named by the operating system.
+#[cfg(not(target_os = "windows"))]
+const MIRROR: &str = "";
+
 /// The window could not be built or could not be supplied.
 ///
 /// Diagnostic only: none of these three reaches a user as a sentence. Without a window the app
@@ -162,22 +184,68 @@ impl Window {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PageCall(pub String);
 
-/// Puts nonce, style, script, language and catalogue into the page.
+/// Puts nonce, style, script, the two platform parts, language and catalogue into the page.
 ///
-/// Five placeholders, no templating engine: the page is one file, and the variable parts are this
-/// start's nonce and the language of this run.
+/// Seven placeholders, no templating engine: the page is one file, and the variable parts are
+/// this start's nonce, the language of this run, and the two pieces that only one platform has.
 ///
-/// The order matters. The catalogue goes in **last**: a sentence in it may contain `{{STYLE}}` or
-/// any other placeholder — an archive is full of texts nobody vetted — and a replacement running
-/// after it would substitute inside a sentence the user wrote. Whatever the catalogue brings is
-/// therefore never looked at again.
+/// The order matters twice. The catalogue goes in **last**: a sentence in it may contain
+/// `{{STYLE}}` or any other placeholder — an archive is full of texts nobody vetted — and a
+/// replacement running after it would substitute inside a sentence the user wrote. Whatever the
+/// catalogue brings is therefore never looked at again. And no piece put in here may itself carry
+/// a placeholder: its own replacement has already run when it arrives, and the placeholder would
+/// stay standing in the page. `no_part_of_the_page_carries_a_placeholder_of_its_own` holds that.
 pub fn page(nonce: &str, catalogue: &Catalog) -> String {
     TEMPLATE
         .replace("{{STYLE}}", STYLE)
         .replace("{{SCRIPT}}", SCRIPT)
+        .replace("{{MIRROR}}", MIRROR)
+        .replace("{{EXTENSION}}", EXTENSION)
         .replace("{{NONCE}}", nonce)
         .replace("{{LANGUAGE}}", catalogue.language().tag())
         .replace("{{CATALOG}}", &catalogue.as_json())
+}
+
+/// The System Settings pane on which the user switches the extension on.
+///
+/// **Measured on macOS 26.6 (build 25G72), 2026-09-13.** `open "x-apple.systempreferences:…"`
+/// with this identifier starts
+/// `/System/Library/ExtensionKit/Extensions/LoginItems.appex/Contents/MacOS/LoginItems` with
+/// `serviceName = com.apple.LoginItems-Settings.extension` in its launch arguments — that is the
+/// pane, and it really was selected. The pane's own `Info.plist` names
+/// `allowsXAppleSystemPreferencesURLScheme = true` and carries the older identifier
+/// `com.apple.ExtensionsPreferences` as `url_alias`, which was measured to open the same pane;
+/// the newer one is used here because it is the pane's own.
+///
+/// **What a success does not say:** `open` returns 0 for an identifier that exists nowhere
+/// (measured with `com.apple.NoSuchPane.extension` — System Settings comes up on whatever pane it
+/// was last on, and no pane extension starts). The exit code is therefore no evidence that the
+/// user is looking at the right list, which is why the page keeps the written way there as well.
+///
+/// **Not proven:** that any parameter jumps to the section the elasticdms entry is in. No
+/// settings pane on this machine carries the string "File Provider" at all (searched over every
+/// `/System/Library/ExtensionKit/Extensions/*/Contents/Resources/Localizable.loctable`, 241 of
+/// them), and the pane's binary yields no extension-point string either. The catalogue sentence
+/// therefore names the pane and the "Extensions" section — both measured, in both languages, out
+/// of that pane's `Localizable.loctable` — and no heading below them.
+#[cfg(target_os = "macos")]
+pub const EXTENSION_SETTINGS: &str =
+    "x-apple.systempreferences:com.apple.LoginItems-Settings.extension";
+
+/// Opens [`EXTENSION_SETTINGS`] — through the operating system, never in the web view.
+///
+/// The same way the sign-in page takes (`event_loop::open_login_page`): this page navigates
+/// nowhere, and a pane of System Settings is not something a web view could show anyway.
+///
+/// # Errors
+///
+/// [`DisplayError::Open`] when the operating system refuses to open it at all.
+#[cfg(target_os = "macos")]
+pub fn open_extension_settings() -> Result<(), crate::display::DisplayError> {
+    open::that_detached(EXTENSION_SETTINGS).map_err(|e| crate::display::DisplayError::Open {
+        target: EXTENSION_SETTINGS.to_owned(),
+        reason: e.to_string(),
+    })
 }
 
 /// May the web view navigate there?
@@ -306,6 +374,217 @@ mod tests {
         }
     }
 
+    /// The two platform parts as **files**, on every platform.
+    ///
+    /// [`EXTENSION`] and [`MIRROR`] are empty on the platform that does not carry them, and a
+    /// check over an empty string checks nothing: on this machine nobody would ever look at
+    /// `view/mirror.html`, and on a Windows machine nobody at `view/extension.html`. Read here so
+    /// that both are measured wherever the tests run — what may **not** be read on both platforms
+    /// is the finished page, and `page` is not built from these.
+    const EXTENSION_SOURCE: &str = include_str!("view/extension.html");
+    const MIRROR_SOURCE: &str = include_str!("view/mirror.html");
+
+    /// Every part the page is put together from — the shared ones and the two that only one
+    /// platform carries. What is checked on "the page's own parts" has to be checked on these
+    /// as well, or the check has a hole exactly where the newest markup is.
+    const PARTS: [&str; 5] = [TEMPLATE, STYLE, SCRIPT, EXTENSION_SOURCE, MIRROR_SOURCE];
+
+    /// The parts that are put **into** the template. The template itself carries the markers and
+    /// is therefore not among them.
+    const PUT_IN: [&str; 4] = [STYLE, SCRIPT, EXTENSION_SOURCE, MIRROR_SOURCE];
+
+    #[test]
+    fn no_part_of_the_page_carries_a_placeholder_of_its_own() {
+        // `page` substitutes each placeholder once and in order. A part that itself contained
+        // `{{EXTENSION}}` would arrive after that replacement had run, and the marker would stay
+        // standing in the finished page — visible to the user, and nothing would have filled it.
+        for part in PUT_IN {
+            assert!(!part.contains("{{"), "a part of the page carries a placeholder of its own");
+        }
+    }
+
+    #[test]
+    fn the_encoding_stands_in_the_first_kilobyte_of_the_page() {
+        // A browser reads the encoding out of the first 1024 bytes and otherwise falls back to
+        // the machine's default. MEASURED on 2026-09-13: with the header comment in front of
+        // `<head>`, the German page came up as "Ã–ffnen Sie die Systemeinstellungen" — every
+        // umlaut two wrong characters, in every sentence of the catalogue.
+        for language in Language::ALL {
+            let html = page("n", Catalog::of(language));
+            let place = html.find("charset=\"utf-8\"").expect("the page names its encoding");
+            assert!(place < 1024, "{language}: the encoding stands only at byte {place}");
+        }
+    }
+
+    #[test]
+    fn every_comment_of_every_part_is_opened_once_and_closed_once() {
+        // A comment that carries an end marker in its own prose ends there, and everything after
+        // it stands in the window as a sentence for the user. MEASURED on 2026-09-13: the header
+        // of this file explained the danger, spelled the marker out while doing so, and put half
+        // its own text on the screen. An unequal count is exactly that mistake.
+        for part in PARTS {
+            assert_eq!(
+                part.matches("<!--").count(),
+                part.matches("-->").count(),
+                "a part of the page opens and closes a different number of comments"
+            );
+        }
+    }
+
+    #[test]
+    fn no_comment_of_the_template_names_a_marker() {
+        // The replacement runs over the comments too. A part put in inside one of them would end
+        // that comment at its own `-->` and spill its markup into the document — MEASURED on
+        // 2026-09-13: the wizard's extension page stood above the window's header, and the rest
+        // of the comment stood there as a sentence for the user to read.
+        let mut rest = TEMPLATE;
+        while let Some(start) = rest.find("<!--") {
+            let after = &rest[start + 4..];
+            let end = after.find("-->").expect("every comment is closed");
+            assert!(
+                !after[..end].contains("{{"),
+                "a comment of the page names a marker; the replacement would run into it"
+            );
+            rest = &after[end + 3..];
+        }
+    }
+
+    #[test]
+    fn the_wizard_carries_every_step_the_decision_names() {
+        // ADR-D13 §5. The steps this build has are the sections in the document — view.js reads
+        // them from there — so this is the list the wizard can ever show.
+        let html = page("n", german());
+        for step in ["welcome", "server", "workstation", "code", "signin", "done"] {
+            assert!(html.contains(&format!("data-page=\"{step}\"")), "the {step} page is missing");
+        }
+    }
+
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn only_macos_carries_the_extension_page_and_windows_carries_the_folder_s_place() {
+        // ADR-D13 §10, the half of it this machine can measure: here the extension page is in
+        // the document and the field for the folder's place is not. The Windows half stands in
+        // the test below, and the Windows build runs it.
+        let html = page("n", german());
+        assert!(html.contains(r#"data-page="extension""#), "the extension page is missing");
+        assert!(
+            !html.contains(r#"data-field="mirrorPath""#),
+            "the field for the folder's place has no meaning here (measurement 5) and must not \
+             stand in the page"
+        );
+    }
+
+    #[test]
+    #[cfg(not(target_os = "macos"))]
+    fn no_index_of_the_wizard_reaches_the_extension_page_here() {
+        // The structural half of ADR-D13 §10: not "the page is never shown" but "the page is not
+        // there". Back and Next are indices into the sections the document carries.
+        let html = page("n", german());
+        assert!(EXTENSION.is_empty(), "the extension markup is compiled in on this platform");
+        assert!(!html.contains(r#"data-page="extension""#), "the extension page is in the page");
+        assert!(
+            !html.contains("setup-extension-open"),
+            "the button to System Settings is in the page"
+        );
+    }
+
+    #[test]
+    #[cfg(target_os = "windows")]
+    fn windows_carries_the_field_for_the_folder_s_place() {
+        let html = page("n", german());
+        assert!(html.contains(r#"data-field="mirrorPath""#), "the folder's place is missing");
+    }
+
+    #[test]
+    fn both_platform_parts_are_a_page_of_the_wizard_and_a_field_of_it() {
+        // Read from the files and not from the built page, so that the part this platform does
+        // not carry is measured all the same — otherwise the first anyone hears of a broken
+        // `view/mirror.html` is a Windows build.
+        assert!(EXTENSION_SOURCE.contains(r#"data-page="extension""#));
+        assert!(EXTENSION_SOURCE.contains(r#"data-step="setup.extension.step""#));
+        assert!(MIRROR_SOURCE.contains(r#"data-field="mirrorPath""#));
+        // Both carry key paths and no sentence, like every other part.
+        for part in [EXTENSION_SOURCE, MIRROR_SOURCE] {
+            assert!(part.contains("data-text=\"setup."), "a part carries no catalogue key");
+        }
+    }
+
+    #[test]
+    fn the_page_knows_the_same_length_limit_as_the_protocol() {
+        // Two numbers, one rule. If the page let more through than `Request::read` takes, the
+        // message would be discarded on the other side and the click would do nothing at all.
+        assert!(
+            SCRIPT.contains(&format!("MAX_VALUE = {}", crate::message::MAX_VALUE)),
+            "view.js holds to a different length than message::MAX_VALUE"
+        );
+        // That seven values of that length also fit in one request is the protocol's own rule and
+        // is asserted where the two numbers stand (`message.rs`, at compile time). It used to
+        // stand here as `MAX_VALUE * 7 < MAX_LENGTH / 2`, which multiplies characters and
+        // compares them against a byte budget — true for ASCII and for nothing else.
+    }
+
+    /// The walk through the wizard at the level the page walks it — every message in the order
+    /// view.js sends and receives it.
+    ///
+    /// It is not the window: nobody can click in a `wry` web view from a test. What it does hold
+    /// is everything between the click and the source — that a set-up arrives at all, that the
+    /// values the page hands over reach the source, that a value for a fixed field does not, and
+    /// that the extension answers on its own channel.
+    #[test]
+    fn the_page_s_way_through_the_set_up_arrives_at_the_source() {
+        use std::path::Path;
+
+        use crate::demo::{DemoSource, DemoState};
+        use crate::display::{DisplaySource, ExtensionState, Fixed, SetupValues};
+        use crate::message::Request;
+
+        let source =
+            DemoSource::new(crate::demo::now(), DemoState::SignedOut, Path::new("/tmp"), german())
+                .unwrap();
+
+        // "Set-up" in the window.
+        assert_eq!(Request::read(r#"{"kind":"openSetup"}"#).unwrap(), Request::OpenSetup);
+        let view = source.setup().expect("the demo knows its set-up");
+        assert!(view.api_base.is_open() && view.auth_base.is_open());
+        assert_eq!(view.app_base.fixed, Fixed::Operator, "the demo's one fixed value");
+
+        // Next from the pages with fields: everything that was offered, and the value that was
+        // not offered alongside it — the page cannot enforce §1, the source can.
+        let typed = SetupValues {
+            api_base: Some("https://api.elasticdms.example".into()),
+            auth_base: Some("https://anmeldung.elasticdms.example".into()),
+            app_base: Some("https://attacker.example".into()),
+            device_name: Some("Werkstatt 4".into()),
+            ..SetupValues::default()
+        };
+        source.apply_setup(&typed).unwrap();
+        let after = source.setup().unwrap();
+        assert_eq!(after.api_base.value, "https://api.elasticdms.example");
+        assert_eq!(after.device_name.value, "Werkstatt 4");
+        assert_eq!(
+            after.app_base.value, "https://archiv.example",
+            "a value for a fixed field must not get through"
+        );
+
+        // The extension page, asking every two seconds until macOS says yes.
+        assert_eq!(source.extension_state(), ExtensionState::Off);
+        let mut state = ExtensionState::Off;
+        for _ in 0..10 {
+            state = source.extension_state();
+        }
+        assert_eq!(state, ExtensionState::On, "the demo never switches itself on");
+
+        // And the last page.
+        source.complete_setup().unwrap();
+    }
+
+    #[test]
+    fn a_fixed_value_is_marked_as_fixed_and_an_open_one_is_not() {
+        use crate::display::{Fixed, SetupField};
+        assert!(SetupField::open("https://archive.example").is_open());
+        assert!(!SetupField::fixed("https://archive.example", Fixed::Operator).is_open());
+    }
+
     #[test]
     fn the_page_names_no_foreign_origin() {
         // Checked on the page's **own** parts, not on the rendered whole: a sentence of the
@@ -317,7 +596,7 @@ mod tests {
         // The only permitted hit is the SVG namespace — an identifier, not an address:
         // `createElementNS` fetches nothing.
         let namespace = "http://www.w3.org/2000/svg";
-        for part in [TEMPLATE, STYLE, SCRIPT] {
+        for part in PARTS {
             assert_eq!(
                 part.matches("http://").count(),
                 part.matches(namespace).count(),
@@ -365,10 +644,12 @@ mod tests {
                 );
             }
         }
-        assert!(
-            !TEMPLATE.contains("Ordner") && !SCRIPT.contains("Ordner"),
-            "a German sentence stands in the page itself instead of in the catalogue"
-        );
+        for part in PARTS {
+            assert!(
+                !part.contains("Ordner"),
+                "a German sentence stands in the page itself instead of in the catalogue"
+            );
+        }
     }
 
     #[test]
@@ -400,9 +681,17 @@ mod tests {
             html.contains("default-src 'none'"),
             "without default-src 'none' everything is open"
         );
-        for forbidden in ["connect-src 'none'", "img-src 'none'", "frame-ancestors 'none'"] {
+        for forbidden in ["connect-src 'none'", "img-src 'none'"] {
             assert!(html.contains(forbidden), "{forbidden} is missing from the policy");
         }
+        // `frame-ancestors` is in the policy and is **inert there**: the content-security-policy
+        // specification lists it — with `report-uri` and `sandbox` — among the directives a
+        // browser ignores when the policy is delivered in a `meta` element. It stands in the page
+        // as a statement of intent and for the day the policy moves to a header; what actually
+        // keeps this page out of a frame is the web view, which loads one document and
+        // `navigation_allowed` refuses every other. Asserting it beside the two above would read
+        // as a guarantee the delivery cannot hold.
+        assert!(html.contains("frame-ancestors 'none'"), "the statement of intent is gone");
         assert!(!html.contains("'unsafe-inline'"), "unsafe-inline would cancel the nonce out");
     }
 
@@ -418,6 +707,84 @@ mod tests {
             "javascript:alert(1)",
         ] {
             assert!(!navigation_allowed(foreign.into()), "\"{foreign}\" should have been refused");
+        }
+    }
+
+    /// Writes the set-up wizard as files that can be walked through — the tool behind the
+    /// walk-through, not a check (hence `ignore`):
+    /// `cargo test -p elasticdms -- --ignored write_setup_preview --nocapture`.
+    ///
+    /// It takes the same route as the window — `window::page`, the same `Notice`s, the same
+    /// `Notice::as_script` — so that what is walked through is the page the app shows and not a
+    /// drawing of it. Three devices, because they are three different wizards:
+    ///
+    /// * `unmanaged` — nobody has told this workstation anything: every page is a step.
+    /// * `managed` — the operator set all three addresses and the name: the server and workstation
+    ///   pages are not steps at all, and their values stand as facts on the first page (§3).
+    /// * `extension-on` — the same unmanaged device with the extension already switched on: the
+    ///   step for it is not in the list.
+    ///
+    /// The language is this run's, so `EDMS_LANG=en` writes the English pages.
+    #[test]
+    #[ignore = "only writes the wizard for a walk-through"]
+    fn write_setup_preview() {
+        use std::path::Path;
+
+        use crate::demo::{DemoSource, DemoState};
+        use crate::display::{DisplaySource, ExtensionState, Fixed, SetupField};
+        use crate::menu::{FileManager, menu_state};
+        use crate::message::StateView;
+
+        let catalogue = crate::locale::catalogue();
+        let source =
+            DemoSource::new(crate::demo::now(), DemoState::SignedOut, Path::new("/tmp"), catalogue)
+                .unwrap();
+        let state = source.state();
+        let menu = menu_state(&state, FileManager::Finder, catalogue);
+        let header = Notice::State { state: Box::new(StateView::from(&state, &menu, catalogue)) };
+
+        let unmanaged = source.setup().unwrap();
+        let mut managed = unmanaged.clone();
+        managed.api_base = SetupField::fixed("https://api.elasticdms.example", Fixed::Operator);
+        managed.auth_base =
+            SetupField::fixed("https://anmeldung.elasticdms.example", Fixed::Operator);
+        managed.device_name = SetupField::fixed("Werkstatt 4", Fixed::Enrolled);
+        managed.language = SetupField::fixed(catalogue.language().tag(), Fixed::Operator);
+        managed.enrolled = true;
+        let mut switched_on = unmanaged.clone();
+        switched_on.extension = ExtensionState::On;
+
+        for (name, view) in
+            [("unmanaged", unmanaged), ("managed", managed), ("extension-on", switched_on)]
+        {
+            let nonce = "preview00000abcd";
+            let notice = Notice::Setup { setup: Box::new(view) };
+            // The app's half of the round trip, in eight lines. "Next" hands the values over and
+            // waits for the answer before it moves on (view.js: the refusal used to arrive while
+            // the user was already one page further, about a field they could no longer see), so
+            // a preview with nothing behind `window.ipc` would stop on the first page that has a
+            // field. This answers the way `event_loop::page_call` answers — the same notice, and
+            // asynchronously, because that is the half that matters.
+            let answer = format!(
+                "window.__edmsAnswer = () => {{ {} }};\n\
+                 window.ipc = {{ postMessage: (raw) => {{\n  \
+                   const sent = JSON.parse(raw);\n  \
+                   if (sent.kind === \"applySetup\" || sent.kind === \"openSetup\") \
+                     {{ setTimeout(window.__edmsAnswer, 0); }}\n\
+                 }} }};",
+                notice.as_script().unwrap()
+            );
+            let to_set = format!(
+                "<script nonce=\"{nonce}\">\n{}\n{}\n{}\n</script>\n</body>",
+                header.as_script().unwrap(),
+                notice.as_script().unwrap(),
+                answer
+            );
+            let html = page(nonce, catalogue).replace("</body>", &to_set);
+            let path = std::env::temp_dir()
+                .join(format!("elasticdms-setup-{name}-{}.html", catalogue.language()));
+            std::fs::write(&path, html).unwrap();
+            println!("SETUP {}", path.display());
         }
     }
 

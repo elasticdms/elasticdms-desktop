@@ -39,7 +39,9 @@ use crate::window::{PageCall, Window};
 pub const PAGE: usize = 25;
 
 /// Everything that comes into the loop.
-#[derive(Debug)]
+///
+/// `Debug` is written out by hand below: one variant carries a built engine, and neither it nor
+/// the abort beside it belongs in a line that only says which event arrived.
 pub enum Event {
     /// A menu entry was clicked.
     Menu(MenuId),
@@ -51,6 +53,28 @@ pub enum Event {
     Wake,
     /// A second start asks for the window.
     WindowShow,
+    /// The engine a finished set-up made possible is up — or did not come up.
+    ///
+    /// It is built on a thread of its own: `EngineView::start` opens the keychain (which may put
+    /// a system dialog in front of the user), connects the platform layer and starts the sign-in.
+    /// On the user-interface thread that would be a frozen window, and on macOS an app the system
+    /// marks as "not responding".
+    Engine(Box<Result<crate::wiring::EngineView, crate::wiring::StartupAbort>>),
+}
+
+impl std::fmt::Debug for Event {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Menu(id) => f.debug_tuple("Menu").field(id).finish(),
+            Self::Icon(event) => f.debug_tuple("Icon").field(event).finish(),
+            Self::Page(call) => f.debug_tuple("Page").field(call).finish(),
+            Self::Wake => f.write_str("Wake"),
+            Self::WindowShow => f.write_str("WindowShow"),
+            // Not the view and not the abort: the abort names addresses, the view names the
+            // state, and neither belongs in a line that only says which event arrived.
+            Self::Engine(built) => f.debug_tuple("Engine").field(&built.is_ok()).finish(),
+        }
+    }
 }
 
 impl From<PageCall> for Event {
@@ -74,11 +98,17 @@ pub enum StartupError {
 ///
 /// `guard` holds the single-instance lock; it has to live for as long as the app runs, and is
 /// therefore handed into the loop.
+///
+/// `waiting_for_setup` says that `source` is the one of a workstation that has not been told
+/// where its server is (`crate::awaiting`). Only such a run builds an engine when the wizard
+/// reaches its last page; every other one already has its engine, and the values the wizard
+/// stores reach it at the next start the ordinary way.
 pub fn start(
     source: Arc<dyn DisplaySource>,
     window_on_start: bool,
     guard: Option<Guard>,
     catalogue: &'static Catalog,
+    waiting_for_setup: bool,
 ) -> Result<Infallible, StartupError> {
     // Only macOS needs the `mut`: `set_activation_policy` takes the loop mutably. Without this
     // exception the Windows build would report an unnecessary `mut` — and `-D warnings` would turn
@@ -130,6 +160,8 @@ pub fn start(
         catalogue,
         loaded: PAGE,
         show_on_start: window_on_start,
+        open_setup: true,
+        awaiting: waiting_for_setup,
         _guard: guard,
     };
 
@@ -152,6 +184,21 @@ struct Control {
     loaded: usize,
     /// `--window`: open the window right on the first pass.
     show_on_start: bool,
+    /// Whether the set-up has still to open by itself in this run (ADR-D13 §11, points 2 and 3).
+    ///
+    /// Once per run and not once per window: a device that is waiting for its approval, or whose
+    /// user closed the window halfway through, is not to be met by the wizard again at every
+    /// click on "Open elasticdms" — "a wizard that reopened at every login would nag the one
+    /// person who can do least about it" (`DisplaySource::complete_setup`).
+    open_setup: bool,
+    /// Whether the source is `crate::awaiting::AwaitingSetup` — a workstation nobody has told
+    /// where its server is (ADR-D13 §11, point 1).
+    ///
+    /// A `bool` and not a downcast: what the loop needs to know is not which type stands there
+    /// but whether a finished set-up is allowed to build an engine. It goes `false` the moment
+    /// one is being built, so a second "Done" cannot start a second engine against the same store
+    /// and the same keychain.
+    awaiting: bool,
     /// Only held: for as long as it lives, this instance is the only one.
     _guard: Option<Guard>,
 }
@@ -175,6 +222,7 @@ impl Control {
             TaoEvent::UserEvent(Event::Page(call)) => self.page_call(&call),
             TaoEvent::UserEvent(Event::Wake) => self.adopt_state(),
             TaoEvent::UserEvent(Event::WindowShow) => self.show_window(target),
+            TaoEvent::UserEvent(Event::Engine(built)) => self.take_over(*built),
             // Closing does not end the app, it only releases the window (ADR-D07).
             TaoEvent::WindowEvent { window_id, event: WindowEvent::CloseRequested, .. }
                 if self.window.as_ref().is_some_and(|f| f.identifier() == window_id) =>
@@ -283,6 +331,154 @@ impl Control {
             Request::OpenFolder => self.report(self.source.open_folder(), None),
             Request::OpenBaskets => self.report(self.source.open_baskets(), None),
             Request::OpenLoginPage => self.report(self.open_login_page(), None),
+            Request::OpenSetup => self.show_setup(),
+            Request::ApplySetup { values } => match self.source.apply_setup(&values) {
+                // Afresh afterwards, and only then: what the source made of the values is what
+                // the wizard has to show — a field the enrolment has just closed is a field
+                // nobody may go on typing in.
+                Ok(()) => self.show_setup(),
+                Err(e) => self.report(Err(e), None),
+            },
+            Request::CompleteSetup => {
+                let marked = self.source.complete_setup();
+                let reached = marked.is_ok();
+                self.report(marked, None);
+                if reached {
+                    self.build_engine_if_waiting();
+                }
+            }
+            Request::CheckExtension => {
+                let state = self.source.extension_state();
+                self.send(&Notice::SetupExtension { state });
+            }
+            Request::OpenExtensionSettings => {
+                #[cfg(target_os = "macos")]
+                self.report(crate::window::open_extension_settings(), None);
+                // Nowhere else is there a pane to open, and nowhere else does the page carry the
+                // button that would ask for one. If the request arrives all the same, something
+                // is wrong with this program — and that belongs in the log.
+                #[cfg(not(target_os = "macos"))]
+                tracing::warn!(
+                    "the user interface asked for the extension settings; this platform has none."
+                );
+            }
+        }
+    }
+
+    /// The set-up opens by itself on a device that has not been walked through to the end
+    /// (ADR-D13 §11, points 2 and 3) — once per run, at the first window.
+    ///
+    /// What decides is the source's own answer and nothing else: `SetupReason::ByHand` means
+    /// `setup.completed` stands, `First` that it never did, `Counterpart` that a start found this
+    /// device pointed at another server and gave the mark up
+    /// (`setup::note_counterpart_changed`). A source that knows no set-up at all
+    /// (`setup()` -> `None`) opens nothing, and says nothing about it either: a sentence would be
+    /// a complaint about a click nobody made.
+    fn open_setup_if_it_is_owed(&mut self) {
+        if !self.open_setup {
+            return;
+        }
+        self.open_setup = false;
+        let Some(setup) = self.source.setup() else { return };
+        if setup.reason == crate::display::SetupReason::ByHand {
+            return;
+        }
+        tracing::info!(reason = ?setup.reason, "the set-up opens by itself.");
+        self.send(&Notice::Setup { setup: Box::new(setup) });
+    }
+
+    /// The last page of the set-up was reached on a workstation that had no engine — build one.
+    ///
+    /// Only from [`crate::awaiting::AwaitingSetup`]: a running engine does not get a second one,
+    /// and the values the wizard just stored reach it at the next start the ordinary way. The
+    /// building runs on a thread of its own and comes back as [`Event::Engine`]; see that variant
+    /// for why it must not run here.
+    ///
+    /// A set-up that still leaves something mandatory open changes nothing: the source stays what
+    /// it is, and the page said what is missing under the field it belongs to.
+    fn build_engine_if_waiting(&mut self) {
+        if !self.awaiting {
+            return;
+        }
+        let resolution = crate::setup::resolve();
+        let configuration = match resolution.configuration() {
+            Ok(configuration) => configuration,
+            Err(error) => {
+                tracing::info!(%error, "the set-up was finished, and something is still missing.");
+                return;
+            }
+        };
+        // From here on this source is on its way out; a second "Done" must not start a second
+        // engine against the same store and the same keychain.
+        self.awaiting = false;
+        let messenger = self.messenger.clone();
+        let started =
+            std::thread::Builder::new().name("edms-take-over".to_owned()).spawn(move || {
+                let built = crate::wiring::EngineView::start(configuration);
+                let _ = messenger.send_event(Event::Engine(Box::new(built)));
+            });
+        if let Err(error) = started {
+            tracing::error!(%error, "the engine could not be built after the set-up.");
+            self.awaiting = true;
+            self.report(
+                Err(DisplayError::NotPossible(
+                    self.catalogue.text(key::NOTICE_SETUP_RESTART).to_owned(),
+                )),
+                None,
+            );
+        }
+    }
+
+    /// The built engine takes the waiting source's place — or it did not come up, and the user is
+    /// told in one sentence.
+    ///
+    /// The waiting source is dropped here and not before: while the engine is being built, the
+    /// wizard has to go on working, because the build may fail and the user is still standing in
+    /// it. For a moment the two hold a connection to the same `state.sqlite` each; the file is in
+    /// WAL mode for exactly that (`edms_store`, module header).
+    /// [`crate::awaiting::AwaitingSetup::stop`] closes the old one by hand, because `tao` exits
+    /// the process without running a single `Drop`.
+    ///
+    /// `[GAP → PROPOSAL]` The window, the menu and the tray keep the language they were built
+    /// with. If the wizard's own language field was changed on the way here, the engine's hints
+    /// arrive in the new language while the window around them is still in the old one, until the
+    /// next start — `window::page` puts the catalogue into the document once, at window creation,
+    /// and there is no reload path. The chooser says so in its own sentence
+    /// (`setup.welcome.language_hint`); closing it properly means a window that can be rebuilt.
+    fn take_over(&mut self, built: Result<crate::wiring::EngineView, crate::wiring::StartupAbort>) {
+        match built {
+            Ok(view) => {
+                tracing::info!("the set-up is finished; the engine takes over.");
+                self.source.stop();
+                self.source = Arc::new(view);
+                let messenger = self.messenger.clone();
+                self.source.observe(Box::new(move || {
+                    let _ = messenger.send_event(Event::Wake);
+                }));
+                self.loaded = PAGE;
+                self.adopt_state();
+            }
+            Err(abort) => {
+                // The window stays, and so does the wizard: whatever went wrong here is something
+                // the values can be changed for. Ending the process would leave the person who
+                // just typed three addresses with nothing at all.
+                tracing::error!(%abort, "the engine did not come up after the set-up.");
+                self.awaiting = true;
+                self.report(
+                    Err(DisplayError::NotPossible(
+                        self.catalogue.text(key::NOTICE_SETUP_RESTART).to_owned(),
+                    )),
+                    None,
+                );
+            }
+        }
+    }
+
+    /// Sends the set-up to the page, or says that there is none to send.
+    fn show_setup(&mut self) {
+        match self.source.setup() {
+            Some(setup) => self.send(&Notice::Setup { setup: Box::new(setup) }),
+            None => self.report(Err(DisplayError::SetupNotAvailable), None),
         }
     }
 
@@ -318,6 +514,7 @@ impl Control {
                 self.loaded = PAGE;
                 // Fill it already: until the page reports `ready`, it waits in its queue.
                 self.adopt_state();
+                self.open_setup_if_it_is_owed();
             }
             // Without a window the icon stays usable; a silent click would be the worse thing.
             Err(e) => tracing::error!(%e, "the window could not be opened."),

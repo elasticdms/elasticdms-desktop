@@ -1,22 +1,43 @@
 <!doctype html>
-<!--
-  The window: the local usage log (ADR-D07).
-
-  The placeholders {{NONCE}}, {{STYLE}}, {{SCRIPT}}, {{LANGUAGE}} and {{CATALOG}} are filled in by
-  `window::page`. The nonce is new on every start; without it the web view executes neither style
-  nor script. The policy ("default-src 'none'") leaves the page no network: no image, no font, no
-  fetch, no WebSocket. A document title from the archive therefore cannot load anything and cannot
-  give anything away, even if it contained markup (ADR-D07: "the page is embedded, loads nothing
-  and navigates nowhere").
-
-  **No sentence stands in this file.** Every visible text carries `data-text="<key>"`, and the
-  script fills it from the catalogue the app hands in ({{CATALOG}}). A page with texts of its own
-  would be a second catalogue, and a second catalogue is one that gets forgotten when the first is
-  translated.
--->
 <html lang="{{LANGUAGE}}">
   <head>
     <meta charset="utf-8" />
+    <!--
+      The window: the local usage log (ADR-D07), and the set-up wizard beside it (ADR-D13).
+
+      **This comment stands behind the charset and not in front of it**, and it has to stay there.
+      A browser reads the encoding out of the first 1024 bytes of the document; a header comment
+      that grows past that makes the page fall back to the machine's default encoding, and every
+      umlaut of a German catalogue turns into two wrong characters. MEASURED, 2026-09-13: with
+      this comment in front of `<head>` and the wizard's paragraph added to it, the preview served
+      over http came up as "Ã–ffnen Sie die Systemeinstellungen".
+
+      The markers in this file are filled in by `window::page`: the nonce of this start, the
+      style, the script, the language, the catalogue — and the two parts that only one platform
+      carries (`window::MIRROR` for the folder's place on Windows, `window::EXTENSION` for the
+      page that switches the extension on, on macOS). None of them may be named inside a comment:
+      the replacement runs over this text too, and a part put in here would close the comment with
+      the first end marker of its own and spill its markup into the document. MEASURED the same
+      day, the same way — and an end marker written out in prose does it on its own, which is why
+      none of the three is spelled here.
+
+      The nonce is new on every start; without it the web view executes neither style nor script.
+      The policy ("default-src 'none'") leaves the page no network: no image, no font, no fetch,
+      no WebSocket. A document title from the archive therefore cannot load anything and cannot
+      give anything away, even if it contained markup (ADR-D07: "the page is embedded, loads
+      nothing and navigates nowhere").
+
+      One directive of that policy does nothing here: "frame-ancestors" is one of the three the
+      content-security-policy specification has a browser ignore when the policy arrives in a meta
+      element (with report-uri and sandbox). It stands here as a statement of intent, and for the
+      day this policy is delivered as a header. What keeps this page out of a frame today is the
+      web view: it loads one document, and navigation_allowed refuses every other.
+
+      **No sentence stands in this file.** Every visible text carries `data-text="<key>"`, and the
+      script fills it from the catalogue the app hands in. A page with texts of its own would be a
+      second catalogue, and a second catalogue is one that gets forgotten when the first is
+      translated.
+    -->
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta
       http-equiv="Content-Security-Policy"
@@ -28,7 +49,7 @@
     </style>
   </head>
   <body>
-    <header class="header">
+    <header class="header" id="header">
       <div class="account">
         <span class="dot" id="dot" data-tone="NORMAL" aria-hidden="true"></span>
         <div class="account-text">
@@ -40,6 +61,7 @@
         <button type="button" id="button-sign-in" data-text="window.button.sign_in" hidden></button>
         <button type="button" id="button-folder" data-text="window.button.folder"></button>
         <button type="button" id="button-baskets" data-text="window.button.baskets"></button>
+        <button type="button" id="button-setup" data-text="window.button.setup"></button>
       </div>
     </header>
 
@@ -56,7 +78,7 @@
       <button type="button" id="button-login-page" data-text="window.login.button"></button>
     </section>
 
-    <main>
+    <main id="main">
       <div class="heading">
         <h2 id="list-title" data-text="window.list.title"></h2>
         <p class="local-note" data-text="window.list.local_note"></p>
@@ -70,6 +92,178 @@
         <button type="button" id="button-more" data-text="window.list.load_older" hidden></button>
       </div>
     </main>
+
+    <section class="setup" id="setup" hidden aria-labelledby="setup-title">
+      <header class="setup-head">
+        <h2 id="setup-title" data-text="setup.title"></h2>
+        <p class="setup-count" id="setup-count"></p>
+        <ol class="setup-steps" id="setup-steps"></ol>
+      </header>
+
+      <div class="setup-body">
+        <section class="setup-page" data-page="welcome" data-step="setup.welcome.step" hidden>
+          <h3 data-text="setup.welcome.title"></h3>
+          <p class="setup-happened" id="setup-counterpart" data-text="setup.welcome.counterpart" hidden></p>
+          <p data-text="setup.welcome.text"></p>
+          <p data-text="setup.welcome.recorded"></p>
+
+          <div class="setup-field" data-field="language">
+            <label class="setup-label" for="field-language" data-text="setup.welcome.language"></label>
+            <select class="setup-input" id="field-language">
+              <option value="de" data-text="setup.language.de"></option>
+              <option value="en" data-text="setup.language.en"></option>
+            </select>
+            <p class="setup-value" hidden></p>
+            <p class="setup-origin" hidden></p>
+            <!-- The one field whose answer this window cannot show straight away: the catalogue
+                 is put into the document once, when the window is built (`window::page`), and
+                 there is no reload path. Saying so is the whole of the repair — a control that
+                 changes nothing the user can see, and no sentence about it, is worse than the
+                 wait. -->
+            <p class="setup-hint" data-text="setup.welcome.language_hint"></p>
+            <p class="setup-wrong" role="alert" hidden></p>
+          </div>
+
+          <!-- Everything from a page that is not a step on this device (ADR-D13 §3): shown as
+               facts, never hidden, each with the sentence that says where it comes from. -->
+          <div class="setup-facts" id="setup-facts" hidden>
+            <h4 data-text="setup.facts.title"></h4>
+            <dl class="setup-facts-list" id="setup-facts-list"></dl>
+          </div>
+        </section>
+
+        <section class="setup-page" data-page="server" data-step="setup.server.step" hidden>
+          <h3 data-text="setup.server.title"></h3>
+          <p data-text="setup.server.text"></p>
+
+          <div class="setup-field" data-field="apiBase">
+            <label class="setup-label" for="field-api-base" data-text="setup.server.api"></label>
+            <input class="setup-input" id="field-api-base" type="text" spellcheck="false" autocapitalize="off" autocomplete="off" />
+            <p class="setup-value" hidden></p>
+            <p class="setup-origin" hidden></p>
+            <p class="setup-hint" data-text="setup.server.api_hint"></p>
+            <p class="setup-wrong" role="alert" hidden></p>
+          </div>
+
+          <div class="setup-field" data-field="authBase">
+            <label class="setup-label" for="field-auth-base" data-text="setup.server.auth"></label>
+            <input class="setup-input" id="field-auth-base" type="text" spellcheck="false" autocapitalize="off" autocomplete="off" />
+            <p class="setup-value" hidden></p>
+            <p class="setup-origin" hidden></p>
+            <p class="setup-hint" data-text="setup.server.auth_hint"></p>
+            <p class="setup-wrong" role="alert" hidden></p>
+          </div>
+
+          <div class="setup-field" data-field="appBase">
+            <label class="setup-label" for="field-app-base" data-text="setup.server.app"></label>
+            <input class="setup-input" id="field-app-base" type="text" spellcheck="false" autocapitalize="off" autocomplete="off" />
+            <p class="setup-value" hidden></p>
+            <p class="setup-origin" hidden></p>
+            <p class="setup-hint" data-text="setup.server.app_hint"></p>
+            <p class="setup-wrong" role="alert" hidden></p>
+          </div>
+        </section>
+
+        <section class="setup-page" data-page="workstation" data-step="setup.workstation.step" hidden>
+          <h3 data-text="setup.workstation.title"></h3>
+          <!-- Two sentences, and the page picks by what this build carries: the second clause of
+               `text_with_mirror` promises to ask where the folder lies, and off Windows that
+               field is structurally not here (`window::MIRROR`). One shared sentence undid the
+               platform split that the markup does properly. -->
+          <p data-text="setup.workstation.text" data-text-with-mirror="setup.workstation.text_with_mirror"></p>
+
+          <div class="setup-field" data-field="deviceName">
+            <label class="setup-label" for="field-device-name" data-text="setup.workstation.device"></label>
+            <input class="setup-input" id="field-device-name" type="text" spellcheck="false" autocomplete="off" />
+            <p class="setup-value" hidden></p>
+            <p class="setup-origin" hidden></p>
+            <p class="setup-hint" data-text="setup.workstation.device_hint"></p>
+            <p class="setup-wrong" role="alert" hidden></p>
+          </div>
+{{MIRROR}}
+          <!-- Shown and not offered (ADR-D13 §6): the settings live at the end of the first of
+               these, the second is a scratch area where a user can only choose worse, and in the
+               third lie files the server has not confirmed yet. -->
+          <div class="setup-places">
+            <h4 data-text="setup.workstation.places"></h4>
+            <dl class="setup-facts-list">
+              <dt data-text="setup.workstation.data"></dt>
+              <dd id="setup-data-path"></dd>
+              <dt data-text="setup.workstation.staging"></dt>
+              <dd id="setup-staging-path"></dd>
+              <dt data-text="setup.workstation.holding"></dt>
+              <dd id="setup-holding-path"></dd>
+            </dl>
+            <p class="setup-hint" data-text="setup.workstation.places_hint"></p>
+          </div>
+        </section>
+
+        <section class="setup-page" data-page="code" data-step="setup.code.step" hidden>
+          <h3 data-text="setup.code.title"></h3>
+          <p data-text="setup.code.text"></p>
+
+          <div class="setup-field" data-field="enrollmentCode">
+            <label class="setup-label" for="field-code" data-text="setup.code.label"></label>
+            <input class="setup-input setup-code" id="field-code" type="text" spellcheck="false" autocapitalize="characters" autocomplete="off" />
+            <p class="setup-value" hidden></p>
+            <p class="setup-origin" hidden></p>
+            <p class="setup-hint" data-text="setup.code.hint"></p>
+            <p class="setup-wrong" role="alert" hidden></p>
+          </div>
+        </section>
+
+        <section class="setup-page" data-page="signin" data-step="setup.signin.step" hidden>
+          <h3 data-text="setup.signin.title"></h3>
+          <p data-text="setup.signin.text"></p>
+          <p class="setup-hint" data-text="setup.signin.waiting"></p>
+          <!-- The same honesty the folder step has (`setup.extension.skip`): "Next" stays lit on
+               this page, because it has no fields, and one click carries you past it to "Set up".
+               A step that can be walked past in silence says so. -->
+          <p class="setup-hint" data-text="setup.signin.skip"></p>
+
+          <p class="setup-done-line" id="setup-signed-in" data-text="setup.signin.signed_in" hidden></p>
+
+          <div id="setup-login" hidden>
+            <p class="userCode" id="setup-user-code"></p>
+            <dl class="login-data">
+              <dt data-text="window.login.address"></dt>
+              <dd id="setup-login-address"></dd>
+              <dt data-text="window.login.anchor"></dt>
+              <dd id="setup-login-anchor"></dd>
+            </dl>
+          </div>
+
+          <div class="setup-actions">
+            <button type="button" id="setup-sign-in" data-text="window.button.sign_in"></button>
+            <button type="button" id="setup-login-page" data-text="window.login.button" hidden></button>
+          </div>
+        </section>
+{{EXTENSION}}
+        <section class="setup-page" data-page="done" data-step="setup.done.step" hidden>
+          <h3 data-text="setup.done.title"></h3>
+          <p data-text="setup.done.text"></p>
+          <dl class="setup-facts-list" id="setup-done-folder" hidden>
+            <dt data-text="setup.done.folder"></dt>
+            <dd id="setup-folder"></dd>
+          </dl>
+          <p data-text="setup.done.reopen"></p>
+        </section>
+      </div>
+
+      <!-- The app's answer while the wizard is open. It stands here and not in the window's own
+           message bar at the foot of the document: that one is sticky at the bottom too and
+           stands later, so it painted over "Back" and "Next" — the two buttons the message is
+           there to be answered with. -->
+      <p class="setup-notice" id="setup-notice" role="alert" hidden></p>
+
+      <footer class="setup-foot">
+        <button type="button" id="setup-back" data-text="setup.back"></button>
+        <div class="setup-forward">
+          <button type="button" id="setup-next" data-text="setup.next"></button>
+          <button type="button" id="setup-finish" data-text="setup.finish" hidden></button>
+        </div>
+      </footer>
+    </section>
 
     <p class="notice" id="notice" role="alert" hidden></p>
 

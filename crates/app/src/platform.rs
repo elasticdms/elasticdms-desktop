@@ -215,6 +215,30 @@ pub fn connect(
     }
 }
 
+/// Whether the user has switched this app's File Provider extension on — **never from the
+/// user-interface thread** (ADR-D13 §9).
+///
+/// `NSFileProviderManager.getDomainsWithCompletionHandler:` answers through a completion block,
+/// and `DomainManagement` waits that answer out under a deadline (30 s by default). On the
+/// user-interface thread that would be a frozen menu and, on macOS, an app the system marks as
+/// "not responding". `wiring::EngineView` therefore calls this on a thread of its own and the
+/// page reads the last answer at once.
+///
+/// `false` and not an error for every way the question can fail: a device that is not signed in
+/// has no domain yet, a timeout is a question that has not come back, and the page says the same
+/// thing for all of them — "not switched on yet". A dialog about `NSFileProviderErrorDomain`
+/// would be a sentence nobody can act on.
+#[cfg(target_os = "macos")]
+pub fn extension_is_on() -> bool {
+    match edms_fileprovider::DomainManagement::new().domain() {
+        Ok(domains) => domains.iter().any(|found| found.enabled),
+        Err(error) => {
+            tracing::debug!(%error, "macOS did not say whether the folder is switched on");
+            false
+        }
+    }
+}
+
 /// The engine's [`edms_engine::Intake`] as `edms-cfapi` asks for it.
 ///
 /// The crate may name `edms-core` and `edms-i18n` and nothing else, so it declares a trait of its

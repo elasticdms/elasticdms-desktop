@@ -377,6 +377,286 @@ detail[open] .arrow {
   margin-top: 12px;
 }
 
+/* ── The set-up wizard (ADR-D13) ──────────────────────────────────────────── */
+
+.setup {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.setup-head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  padding: 14px 18px 10px;
+  background: var(--ground-raised);
+  border-bottom: 1px solid var(--line);
+}
+
+.setup-head h2 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.setup-count {
+  margin: 1px 0 0;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+/* The step indicator. Number AND weight, never colour alone: which step one is on has to be
+ * readable without colour vision too, the same rule the status dot follows. */
+.setup-steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  counter-reset: step;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.setup-steps li {
+  counter-increment: step;
+}
+
+.setup-steps li::before {
+  content: counter(step) ". ";
+}
+
+.setup-steps li[data-state="current"] {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.setup-steps li[data-state="done"] {
+  color: var(--accent);
+}
+
+.setup-body {
+  flex: 1;
+  padding: 18px;
+  max-width: 74ch;
+}
+
+.setup-page h3 {
+  margin: 0 0 8px;
+  font-size: 15px;
+}
+
+.setup-page h4 {
+  margin: 0 0 4px;
+  font-size: 13px;
+}
+
+.setup-page p {
+  margin: 0 0 10px;
+  max-width: 68ch;
+}
+
+/* What happened, said once and without blaming anybody (ADR-D13 §4). */
+.setup-happened {
+  padding: 9px 12px;
+  border: 1px solid var(--notice);
+  border-radius: 8px;
+  color: var(--notice);
+}
+
+.setup-field {
+  margin: 0 0 16px;
+}
+
+.setup-label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 3px;
+}
+
+.setup-input {
+  font: inherit;
+  color: var(--text);
+  background: var(--ground);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 6px 9px;
+  width: 100%;
+  max-width: 52ch;
+}
+
+select.setup-input {
+  max-width: 24ch;
+}
+
+.setup-code {
+  font-family: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+  letter-spacing: 0.08em;
+  /* No `text-transform`: it would show the code in capitals and send what was typed. A field
+   * that reads differently from what it hands on is the plausible untruth this house forbids —
+   * MEASURED on 2026-09-13, typing "7qk3-88mt" and reading "7QK3-88MT". */
+  max-width: 26ch;
+}
+
+/* A fixed value is a line of text, not a greyed-out field: a disabled field is a field that
+ * failed (ADR-D13 §3). It is therefore set like a value and not like an input. */
+.setup-value {
+  margin: 0 0 2px;
+  font-family: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+  overflow-wrap: anywhere;
+}
+
+.setup-origin,
+.setup-hint {
+  margin: 2px 0 0;
+  color: var(--text-muted);
+  font-size: 12px;
+  max-width: 62ch;
+}
+
+/* The message says what is wrong. The border is the second marker and never the only one — a red
+ * border on its own is a colour that says "no" and nothing else. */
+.setup-wrong {
+  margin: 4px 0 0;
+  color: var(--warning);
+  max-width: 62ch;
+}
+
+.setup-field[data-wrong="yes"] .setup-input {
+  border-color: var(--warning);
+}
+
+.setup-facts,
+.setup-places {
+  margin: 14px 0 0;
+  padding: 12px 14px;
+  background: var(--ground-raised);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+
+.setup-facts-list {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 2px 14px;
+  margin: 0;
+}
+
+.setup-facts-list dt {
+  font-weight: 600;
+}
+
+.setup-facts-list dd {
+  margin: 0;
+  font-family: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+  overflow-wrap: anywhere;
+}
+
+/* The origin sentence of a fact stands under the value it belongs to, indented into the value
+ * column, so that it cannot be read as belonging to the next row. */
+.setup-facts-list dd .setup-origin {
+  font-family:
+    -apple-system, BlinkMacSystemFont, "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+}
+
+.setup-path {
+  padding: 9px 12px;
+  background: var(--ground-raised);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.setup-state {
+  font-weight: 600;
+}
+
+.setup-state[data-state="ON"] {
+  color: #2e9b52;
+}
+
+.setup-state[data-state="OFF"] {
+  color: var(--notice);
+}
+
+.setup-state[data-state="ASKING"] {
+  color: var(--text-muted);
+}
+
+.setup-done-line {
+  font-weight: 600;
+}
+
+.setup-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 12px 0;
+}
+
+/* The app's answer while the wizard is open — in the flow of the wizard's own column, above the
+ * footer. Not sticky: it takes its own height and therefore cannot lie over anything. The window's
+ * `#notice` is sticky at the bottom and stands later in the document, which is exactly how it came
+ * to paint over "Back" and "Next"; `showMessage` sends the sentence here instead. */
+.setup-notice {
+  margin: 0;
+  padding: 10px 18px;
+  background: var(--ground-raised);
+  border-top: 1px solid var(--warning);
+  color: var(--warning);
+}
+
+.setup-foot {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+  padding: 12px 18px;
+  background: var(--ground-raised);
+  border-top: 1px solid var(--line);
+}
+
+.setup-forward {
+  display: flex;
+  gap: 8px;
+}
+
+#setup-next,
+#setup-finish,
+#setup-sign-in,
+#setup-login-page,
+#setup-extension-open {
+  background: var(--accent);
+  border-color: transparent;
+  color: #ffffff;
+  font-weight: 600;
+}
+
+/* A disabled forward button keeps its shape and loses its pull: it is not the message, the
+ * sentence under the field is. */
+#setup-next:disabled,
+#setup-finish:disabled {
+  background: var(--ground);
+  border-color: var(--line);
+  color: var(--text-muted);
+}
+
+@media (prefers-color-scheme: dark) {
+  #setup-next,
+  #setup-finish,
+  #setup-sign-in,
+  #setup-login-page,
+  #setup-extension-open {
+    color: #14161a;
+  }
+
+  #setup-next:disabled,
+  #setup-finish:disabled {
+    color: var(--text-muted);
+  }
+}
+
 /* ── Message ──────────────────────────────────────────────────────────────── */
 
 .notice {

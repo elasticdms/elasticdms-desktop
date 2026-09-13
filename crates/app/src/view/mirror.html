@@ -1,0 +1,19 @@
+<!--
+  Where the mirror lies — **Windows only**. `window::MIRROR` puts it into view.html, in place of
+  the marker there; on every other platform it puts nothing.
+
+  Outside the Windows branch `crates/app/src/platform.rs` reads `let _ = mirror_path;`: the root
+  is named by File Provider and lies under ~/Library/CloudStorage/ (ADR-D13, measurement 5). A
+  field for a value that decides nothing would be a question whose answer is thrown away, and the
+  user would look for their folder where they had put it.
+
+  No sentence stands here either; the keys are filled from the catalogue like everywhere else.
+-->
+          <div class="setup-field" data-field="mirrorPath">
+            <label class="setup-label" for="field-mirror-path" data-text="setup.workstation.mirror"></label>
+            <input class="setup-input" id="field-mirror-path" type="text" spellcheck="false" autocapitalize="off" autocomplete="off" />
+            <p class="setup-value" hidden></p>
+            <p class="setup-origin" hidden></p>
+            <p class="setup-hint" data-text="setup.workstation.mirror_hint"></p>
+            <p class="setup-wrong" role="alert" hidden></p>
+          </div>

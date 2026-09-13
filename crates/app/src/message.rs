@@ -15,12 +15,57 @@ use edms_core::log::{LogEntry, LogKind, Severity};
 use edms_i18n::Catalog;
 use serde::{Deserialize, Serialize};
 
-use crate::display::{DisplayState, LoginCode, Status};
+use crate::display::{DisplayState, ExtensionState, LoginCode, SetupValues, SetupView, Status};
 use crate::icon::IconState;
 use crate::menu::{AccountAction, MenuState};
 
-/// Maximum length of a request in bytes. The largest real one is under 200.
-pub const MAX_LENGTH: usize = 4_096;
+/// Maximum length of a request in **bytes**.
+///
+/// It has to cover the largest request a page holding to [`MAX_VALUE`] can build, and that is the
+/// set-up's seven values. The two budgets are counted in different units, and they have to be
+/// made to meet in one: [`MAX_VALUE`] is characters, this is bytes, and one character is up to
+/// [`WORST_BYTES`] of them once JSON has escaped it. `the_page_knows_the_same_length_limit`
+/// (window.rs) compares the two in bytes and holds this number honest.
+///
+/// It stood at 4 096 while the guard multiplied characters against a byte budget, and that only
+/// ever held for ASCII: seven fields of 256 CJK characters are 5 376 bytes, and the message was
+/// discarded with nothing but a line in the diagnostic log — the user clicked "Next" and nothing
+/// at all happened, which is the one failure [`MAX_VALUE`] exists to prevent.
+pub const MAX_LENGTH: usize = 12_288;
+
+/// Maximum length of one value of the set-up wizard, in characters.
+///
+/// The page holds to it as well and says so per field (`setup.wrong.too_long`) — otherwise a
+/// pasted-in value would make the whole request too long, and [`Request::read`] would discard it
+/// with nothing but a line in the diagnostic log: the user would have clicked "Next" and nothing
+/// at all would have happened. `the_page_knows_the_same_length_limit` holds the two numbers
+/// together.
+///
+/// Characters and not bytes, deliberately: the page's own `maxLength` counts what the user typed,
+/// and a name full of umlauts would otherwise be refused at a length the field itself accepted.
+pub const MAX_VALUE: usize = 256;
+
+/// How many bytes one character of a value can take up in the JSON that carries it.
+///
+/// Six, and the worst case is not a foreign alphabet but a control character: `serde_json` writes
+/// one of those as a six-character escape, while it passes a three-byte character through as its
+/// own bytes. A character outside the basic plane is four bytes, and two UTF-16 units in the
+/// page's own count — so it costs the page twice and this budget less.
+pub const WORST_BYTES: usize = 6;
+
+/// How many values the set-up's message carries ([`SetupValues`]).
+const SETUP_FIELDS: usize = 7;
+
+/// Braces, the kind, the seven names, their quotes and the commas between them.
+const SETUP_FRAME: usize = 512;
+
+/// The two budgets, made to meet — **bytes against bytes**, and at compile time.
+///
+/// A page that holds to [`MAX_VALUE`] per field can then never build a message
+/// [`Request::read`] refuses as too long. The guard that stood for this before lived in a test in
+/// `window.rs` and read `MAX_VALUE * 7 < MAX_LENGTH / 2`: it multiplied characters and compared
+/// them against a byte budget, so it held for ASCII and for nothing else.
+const _: () = assert!(MAX_VALUE * WORST_BYTES * SETUP_FIELDS + SETUP_FRAME <= MAX_LENGTH);
 
 /// What the page wants from the app.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -51,6 +96,24 @@ pub enum Request {
     OpenBaskets,
     /// The "open the sign-in page" button in the sign-in panel.
     OpenLoginPage,
+    /// The "Set-up" button: show the wizard (ADR-D13 §11 — it stays reachable by hand at any
+    /// time, and on a device where nothing is open it shows the facts).
+    OpenSetup,
+    /// The values of the wizard's input pages, on the way to the page after them.
+    ///
+    /// They travel **before** the sign-in and not at the end: the registration is the first thing
+    /// `sign_in` does, and a device flow that stopped at a missing address would show a failure
+    /// for a value nobody had been asked about yet (ADR-D13 §5).
+    ApplySetup {
+        /// What the user typed. Behind a `Box` for the same reason as [`StateView`].
+        values: Box<SetupValues>,
+    },
+    /// The last page of the wizard was reached.
+    CompleteSetup,
+    /// "Check again" on the extension page — and the page's own poll, every two seconds.
+    CheckExtension,
+    /// The button to System Settings on the extension page (macOS).
+    OpenExtensionSettings,
 }
 
 impl Request {
@@ -59,7 +122,16 @@ impl Request {
         if text.len() > MAX_LENGTH {
             return Err(MessageError::TooLong(text.len()));
         }
-        serde_json::from_str(text).map_err(|e| MessageError::Unreadable(e.to_string()))
+        let request: Self =
+            serde_json::from_str(text).map_err(|e| MessageError::Unreadable(e.to_string()))?;
+        if let Self::ApplySetup { values } = &request {
+            // The page holds to [`MAX_VALUE`] and says so per field. A longer value is therefore
+            // not this page speaking, and the app does not pass on what it never offered to take.
+            if let Some(length) = values.longest_over(MAX_VALUE) {
+                return Err(MessageError::ValueTooLong(length));
+            }
+        }
+        Ok(request)
     }
 }
 
@@ -86,6 +158,20 @@ pub enum Notice {
     Error {
         /// The sentence.
         text: String,
+    },
+    /// Open the set-up wizard, or fill it afresh (ADR-D13).
+    Setup {
+        /// Every value with its origin. Behind a `Box`, like [`Self::State`].
+        setup: Box<SetupView>,
+    },
+    /// The answer to a [`Request::CheckExtension`] — and nothing else.
+    ///
+    /// A message of its own rather than another [`Self::Setup`]: the poll runs every two seconds
+    /// while the extension page is open, and a whole set-up arriving that often would overwrite
+    /// what the user is typing on the page they walk back to.
+    SetupExtension {
+        /// What macOS last answered.
+        state: ExtensionState,
     },
 }
 
@@ -228,6 +314,11 @@ pub enum MessageError {
     /// Not JSON, an unknown kind, a missing or a surplus field.
     #[error("the message from the user interface is unreadable: {0}")]
     Unreadable(String),
+    /// One value of the set-up is longer than the page says it takes.
+    #[error(
+        "a value of the set-up is {0} characters long; the app takes at most {MAX_VALUE} per value"
+    )]
+    ValueTooLong(usize),
     /// Serialising failed (should never happen; if it does, it is a bug).
     #[error("the message to the user interface could not be written: {0}")]
     Unwritable(String),
@@ -241,6 +332,7 @@ mod tests {
     use edms_i18n::Language;
 
     use super::*;
+    use crate::display::{Fixed, SetupField, SetupReason};
 
     /// The German catalogue — the assertions below read like the window the user sees.
     fn german() -> &'static Catalog {
@@ -259,7 +351,45 @@ mod tests {
             Request::OpenFolder,
             Request::OpenBaskets,
             Request::OpenLoginPage,
+            Request::OpenSetup,
+            Request::ApplySetup { values: Box::new(values()) },
+            Request::ApplySetup { values: Box::default() },
+            Request::CompleteSetup,
+            Request::CheckExtension,
+            Request::OpenExtensionSettings,
         ]
+    }
+
+    /// What an unmanaged workstation sends after its two input pages: everything it was offered,
+    /// and `None` for the value its operator had already decided.
+    fn values() -> SetupValues {
+        SetupValues {
+            api_base: Some("https://api.example".into()),
+            auth_base: Some("https://anmeldung.example".into()),
+            app_base: None,
+            device_name: Some("Werkstatt 4".into()),
+            mirror_path: None,
+            language: Some("de".into()),
+            enrollment_code: Some("7QK3-88MT".into()),
+        }
+    }
+
+    fn view() -> SetupView {
+        SetupView {
+            reason: SetupReason::Counterpart,
+            api_base: SetupField::open("https://api.example"),
+            auth_base: SetupField::open("https://anmeldung.example"),
+            app_base: SetupField::fixed("https://archiv.example", Fixed::Operator),
+            device_name: SetupField::fixed("Werkstatt 4", Fixed::Enrolled),
+            mirror_path: SetupField::fixed("C:\\Users\\erika\\elasticdms", Fixed::Mirror),
+            language: SetupField::open("de"),
+            enrollment_code: SetupField::open(""),
+            data_path: "C:\\ProgramData\\elasticdms\\state.sqlite".into(),
+            staging_path: "C:\\ProgramData\\elasticdms\\staging".into(),
+            holding_path: "C:\\ProgramData\\elasticdms\\holding".into(),
+            enrolled: true,
+            extension: ExtensionState::Off,
+        }
     }
 
     fn subject() -> Subject {
@@ -290,10 +420,116 @@ mod tests {
             (r#"{"kind":"openFolder"}"#, Request::OpenFolder),
             (r#"{"kind":"openBaskets"}"#, Request::OpenBaskets),
             (r#"{"kind":"openLoginPage"}"#, Request::OpenLoginPage),
+            (r#"{"kind":"openSetup"}"#, Request::OpenSetup),
+            (r#"{"kind":"completeSetup"}"#, Request::CompleteSetup),
+            (r#"{"kind":"checkExtension"}"#, Request::CheckExtension),
+            (r#"{"kind":"openExtensionSettings"}"#, Request::OpenExtensionSettings),
+            // Exactly as view.js builds it: every value it was offered, `null` for every value it
+            // was not. A field the operator decided is not the page's to send.
+            (
+                r#"{"kind":"applySetup","values":{"apiBase":"https://api.example","authBase":null,
+                    "appBase":null,"deviceName":null,"mirrorPath":null,"language":null,
+                    "enrollmentCode":null}}"#,
+                Request::ApplySetup {
+                    values: Box::new(SetupValues {
+                        api_base: Some("https://api.example".into()),
+                        ..SetupValues::default()
+                    }),
+                },
+            ),
         ];
         for (text, expected) in cases {
             assert_eq!(Request::read(text).unwrap(), expected, "{text}");
         }
+    }
+
+    #[test]
+    fn a_set_up_a_page_could_ever_send_fits_in_one_request() {
+        // Seven values at the page's limit. If this were over `MAX_LENGTH`, a user who pasted
+        // long addresses would click "Next" and nothing at all would happen — the message would
+        // be discarded on this side, with a line in the log the user never sees.
+        //
+        // Three alphabets and not one: the limit is counted in characters and the message in
+        // bytes, and `"x".repeat(…)` is the one case where the two are the same number. The CJK
+        // line is the one that used to go over: seven fields of it are 5 376 bytes, against a
+        // `MAX_LENGTH` that stood at 4 096. The control characters are the true worst case —
+        // JSON writes each of them as six.
+        for filler in ['x', 'ü', '文', '\u{1}'] {
+            let long: String = std::iter::repeat_n(filler, MAX_VALUE).collect();
+            assert_eq!(long.chars().count(), MAX_VALUE, "the page would let this through");
+            let full = SetupValues {
+                api_base: Some(long.clone()),
+                auth_base: Some(long.clone()),
+                app_base: Some(long.clone()),
+                device_name: Some(long.clone()),
+                mirror_path: Some(long.clone()),
+                language: Some(long.clone()),
+                enrollment_code: Some(long),
+            };
+            let text =
+                serde_json::to_string(&Request::ApplySetup { values: Box::new(full) }).unwrap();
+            assert!(text.len() <= MAX_LENGTH, "{filler:?}: {} bytes", text.len());
+            assert!(Request::read(&text).is_ok(), "{filler:?}");
+        }
+    }
+
+    #[test]
+    fn a_value_longer_than_the_page_offers_to_take_is_refused() {
+        // Not our page speaking: it holds to the same limit and says so per field. Counted in
+        // characters, so that a name full of umlauts is not refused at a length the field itself
+        // accepted.
+        let long = "ü".repeat(MAX_VALUE + 1);
+        let text = serde_json::to_string(&Request::ApplySetup {
+            values: Box::new(SetupValues { device_name: Some(long), ..SetupValues::default() }),
+        })
+        .unwrap();
+        assert!(text.len() < MAX_LENGTH, "this is about one value, not about the whole message");
+        assert!(matches!(Request::read(&text), Err(MessageError::ValueTooLong(_))));
+        // Exactly at the limit it goes through.
+        let edge = serde_json::to_string(&Request::ApplySetup {
+            values: Box::new(SetupValues {
+                device_name: Some("ü".repeat(MAX_VALUE)),
+                ..SetupValues::default()
+            }),
+        })
+        .unwrap();
+        assert!(Request::read(&edge).is_ok());
+    }
+
+    #[test]
+    fn a_fixed_value_arrives_with_the_reason_it_is_fixed() {
+        // The page needs no second table of its own: which sentence stands under a value follows
+        // from `fixed`, and `NO` is the only value for which a field appears at all.
+        let value = serde_json::to_value(Notice::Setup { setup: Box::new(view()) }).unwrap();
+        let setup = &value["setup"];
+        assert_eq!(setup["kind"], serde_json::Value::Null, "the notice's tag, not the view's");
+        assert_eq!(value["kind"], "setup");
+        assert_eq!(setup["reason"], "COUNTERPART");
+        assert_eq!(setup["apiBase"]["fixed"], "NO");
+        assert_eq!(setup["appBase"]["fixed"], "OPERATOR");
+        assert_eq!(setup["deviceName"]["fixed"], "ENROLLED");
+        assert_eq!(setup["mirrorPath"]["fixed"], "MIRROR");
+        assert_eq!(setup["extension"], "OFF");
+        // Never stored, and therefore never sent back either (ADR-D13 §6).
+        assert_eq!(setup["enrollmentCode"]["value"], "");
+    }
+
+    #[test]
+    fn the_extension_has_an_answer_of_its_own_and_it_is_never_an_error() {
+        // A timeout is read as "not on yet" (ADR-D13 §9); there is no third face for it to
+        // arrive in, because a sentence about `NSFileProviderErrorDomain` is one nobody can act
+        // on.
+        for state in [ExtensionState::On, ExtensionState::Off, ExtensionState::Asking] {
+            let text = serde_json::to_string(&Notice::SetupExtension { state }).unwrap();
+            assert_eq!(
+                serde_json::from_str::<Notice>(&text).unwrap(),
+                Notice::SetupExtension { state }
+            );
+        }
+        let value =
+            serde_json::to_value(Notice::SetupExtension { state: ExtensionState::On }).unwrap();
+        assert_eq!(value["kind"], "setupExtension");
+        assert_eq!(value["state"], "ON");
     }
 
     #[test]
@@ -360,6 +596,8 @@ mod tests {
                 more: true,
             },
             Notice::Error { text: "Der Ordner ist auf diesem Gerät nicht eingerichtet.".into() },
+            Notice::Setup { setup: Box::new(view()) },
+            Notice::SetupExtension { state: ExtensionState::Asking },
         ];
         for m in notices {
             let text = serde_json::to_string(&m).unwrap();

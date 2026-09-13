@@ -69,6 +69,7 @@ title_with_account = "elasticdms – {account}"
 button.sign_in = "Sign in …"
 button.folder = "Open folder"
 button.baskets = "Mailbaskets"
+button.setup = "Set-up"
 login.title = "Sign this device in"
 login.text = "Open the sign-in page and enter this code. While you do, check that the page shows the same check code as here."
 login.address = "Address"
@@ -82,6 +83,117 @@ list.load_older = "Load older"
 list.redacted_title = "The name was removed because the document was erased by order."
 folder_missing = "The folder has not been set up on this device yet."
 baskets_missing = "The mailbaskets are not in the folder on this device yet."
+
+# ── The set-up wizard (ADR-D13) ──────────────────────────────────────────────────────────────
+#
+# Two of its pages exist on one platform only — the folder's place on Windows, the extension on
+# macOS. The sentences stand here on both all the same: the catalogue test measures the files
+# against the key list, not against the pages a build happens to carry.
+#
+# No sentence here names an EDMS_* variable. A variable is an operator surface and belongs in
+# `doctor`, in English; the person in front of this window is to read what holds for their
+# device, not what it is called.
+[setup]
+title = "Set up elasticdms"
+step = "Step {number} of {count}"
+back = "Back"
+next = "Next"
+finish = "Done"
+not_available = "The set-up cannot be opened on this device."
+
+fixed.operator = "Your IT department has set this for this device."
+fixed.enrolled = "This device is registered under this name. A later change is a matter for your IT department."
+fixed.mirror = "The folder already stands in this place. It cannot be moved from here."
+fixed.variable = "These places belong to the installation and are not set in this window."
+facts.title = "What this device was given"
+
+welcome.step = "Overview"
+welcome.title = "What this folder is"
+welcome.text = "elasticdms shows your mailbaskets, your archives and your saved searches as a folder. It is a view and not a place to keep things: you can save nothing in it, and change, rename or delete nothing."
+welcome.recorded = "Files are loaded when you open them, and every opening is recorded as an access."
+welcome.language = "Language of this window"
+welcome.language_hint = "The new language holds from the next start of elasticdms."
+welcome.counterpart = "This device was pointed at a different server before. The local copy has been deleted and the sign-in ended; the set-up starts afresh."
+# The languages name themselves: whoever lands in a window they cannot read still has to be
+# able to find their own language in the list.
+language.de = "Deutsch"
+language.en = "English"
+
+server.step = "Addresses"
+server.title = "The server"
+server.text = "Three addresses, and your IT department has them. None of them can be worked out from the others: the sign-in secret goes to the second one, and nothing here is to be guessed."
+server.api = "Documents"
+server.api_hint = "Where the documents come from."
+server.auth = "Sign-in"
+server.auth_hint = "Where you sign in. Usually a different address from the one for the documents."
+server.app = "Web interface"
+server.app_hint = "The web interface of your archive. Every address the server offers this client afterwards is measured against this one."
+
+workstation.step = "Workstation"
+workstation.title = "This workstation"
+workstation.text = "What this machine is called in the console."
+workstation.text_with_mirror = "What this machine is called in the console, and where its folder lies."
+workstation.device = "Name of this device"
+workstation.device_hint = "Your IT department sees this name in the console, and it stays on this machine after a sign-out. It should name the machine and not the person."
+workstation.mirror = "Where the folder lies"
+workstation.mirror_hint = "An absolute path. The folder itself comes into being at the sign-in."
+workstation.places = "Places on this machine"
+workstation.places_hint = "The installation decides these three. They stand here so that you and your support can find them."
+workstation.data = "Local state"
+workstation.staging = "Scratch area"
+workstation.holding = "Holding directory"
+
+code.step = "Enrolment"
+code.title = "The enrolment code"
+code.text = "Your IT department hands out one code per workstation in the elasticdms console. With it this device registers itself, once."
+code.label = "Enrolment code"
+code.hint = "The code is used once and is not stored. Should the registration fail, you enter it again here."
+
+signin.step = "Sign in"
+signin.title = "Sign in"
+signin.text = "The sign-in runs in your browser: this window shows a code, you confirm it there. Check that the page shows the same check code as this window."
+signin.waiting = "Registration and sign-in take a moment. Leave this window open while they run."
+signin.signed_in = "Signed in. The folder is being set up."
+signin.skip = "You can finish the set-up without signing in and sign in later from the window."
+
+extension.step = "Folder"
+extension.title = "Switch the folder on"
+extension.text = "macOS does not let a program switch its own folder on. Until you do it yourself, the folder stays empty and files in it cannot be opened."
+extension.path = "Open System Settings, go to “Login Items & Extensions”, and switch elasticdms on under “Extensions”."
+extension.button = "Open System Settings"
+extension.again = "Check again"
+extension.asking = "Asking macOS …"
+extension.off = "Not switched on yet."
+extension.on = "Switched on. The folder works."
+extension.skip = "You can finish the set-up without this step. The window then says, for as long as it lasts, that the folder is not on yet."
+
+done.step = "Done"
+done.title = "Set up"
+done.text = "This device is set up. What is still missing — an approval by your IT department, a network that is not up — the window says in its status line; it does not ask you again."
+done.folder = "The folder lies here"
+done.reopen = "You can open this set-up again at any time from the window."
+
+wrong.empty = "This value is needed; without it elasticdms cannot work."
+wrong.scheme = "An address begins with https:// and then names the server."
+wrong.host = "Behind https:// the name of the server is missing."
+wrong.plaintext = "http:// carries everything unencrypted. Only https:// is allowed — with one exception: this machine itself."
+wrong.userinfo = "This address carries an @ in front of the name of the server. In “https://archive.example@elsewhere.example” it is elsewhere.example that is addressed, not archive.example."
+wrong.query = "A base address carries neither a question mark nor a hash."
+wrong.too_long = "This value is longer than {count} characters; that is more than elasticdms passes on."
+wrong.path_absolute = "Give the whole path, with a drive letter — for example C:\\elasticdms."
+wrong.path_taken = "This place is already in use on this device for something else."
+wrong.code = "The enrolment code is needed; your IT department hands it out."
+
+# What the door to the local state says when it refuses a value the page let through
+# (setup::SettingRefused::user_key). The page checks the shape; these are the answers only the
+# app itself can give.
+wrong.address = "This address cannot be used as a base address. Expected is https:// and behind it the name of the server, with no question mark and no hash."
+wrong.not_yours = "This value is set for this device elsewhere. The set-up shows it and does not ask for it."
+wrong.path_holds = "This place holds data belonging to elasticdms itself. A sign-out deletes everything lying in the folder — that data would go with it."
+wrong.path_not_empty = "This directory already holds something. A sign-out deletes everything lying in the folder; choose an empty or a new directory."
+wrong.control = "This name carries a control character. A device name is a single line of text."
+wrong.language = "elasticdms does not speak this language."
+wrong.not_stored = "The value could not be stored on this device. The message about it stands in the diagnostic log."
 
 # ── The mirror: what stands in File Explorer and in Finder ───────────────────────────────────
 #
@@ -122,6 +234,10 @@ signing_out = "Signing out …"
 stopping = "elasticdms is shutting down."
 awaiting_approval = "The device is waiting for approval by your IT department. Compare this fingerprint with the procedural documentation: {fingerprint}"
 enrollment_code_missing = "This device has not been set up yet; the enrolment code from the elasticdms console is missing (EDMS_ENROLLMENT_CODE)."
+# What stands in the status line for as long as nobody has told this workstation where its
+# server is: the app runs, but it has nothing it could ask (ADR-D13 §11).
+setup_needed = "This workstation is not set up yet. Open “Set-up” and enter where your archive lies."
+setup_restart = "The set-up is stored, but elasticdms could not start with it yet. Restart the program; if it stays that way, ask your IT department."
 session_ended = "The session has ended; please sign in again."
 device_code_expired = "The device code has expired; please start the sign-in again."
 login_rejected = "The sign-in was rejected."

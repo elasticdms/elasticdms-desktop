@@ -139,6 +139,11 @@ fn the_english_catalogue_is_a_translation_and_not_a_copy() {
         "menu.tooltip",
         "window.title_with_account",
         "demo.account",
+        // A language names itself, in every catalogue: the list in the set-up wizard is the one
+        // place a user who cannot read the current language has to find their own — "Englisch"
+        // in the German window would help exactly the person who does not need the list.
+        "setup.language.de",
+        "setup.language.en",
     ];
     let german = catalogue(Language::De);
     let english = catalogue(Language::En);

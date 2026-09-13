@@ -70,6 +70,7 @@ title_with_account = "elasticdms – {account}"
 button.sign_in = "Anmelden …"
 button.folder = "Ordner öffnen"
 button.baskets = "Briefkörbe"
+button.setup = "Einrichtung"
 login.title = "Gerät anmelden"
 login.text = "Öffnen Sie die Anmeldeseite und geben Sie diesen Code ein. Prüfen Sie dabei, dass die Seite dasselbe Kennzeichen zeigt wie hier."
 login.address = "Adresse"
@@ -83,6 +84,117 @@ list.load_older = "Ältere laden"
 list.redacted_title = "Der Name wurde entfernt, weil das Dokument auf Anordnung gelöscht wurde."
 folder_missing = "Der Ordner ist auf diesem Gerät noch nicht eingerichtet."
 baskets_missing = "Die Briefkörbe stehen auf diesem Gerät noch nicht im Ordner."
+
+# ── Die Einrichtung (ADR-D13) ────────────────────────────────────────────────────────────────
+#
+# Zwei ihrer Seiten gibt es nur auf je einer Plattform — der Ort des Ordners unter Windows, die
+# Erweiterung unter macOS. Die Sätze stehen hier trotzdem auf beiden: der Katalogtest misst die
+# Dateien gegen die Schlüsselliste, nicht gegen die Seiten, die ein Build gerade mitbringt.
+#
+# Kein Satz hier nennt eine EDMS_*-Variable. Eine Variable ist eine Betreiberoberfläche und
+# gehört in „doctor“, auf Englisch; wer vor diesem Fenster sitzt, soll lesen, was für sein Gerät
+# gilt, nicht wie es heißt.
+[setup]
+title = "elasticdms einrichten"
+step = "Schritt {number} von {count}"
+back = "Zurück"
+next = "Weiter"
+finish = "Fertig"
+not_available = "Die Einrichtung lässt sich auf diesem Gerät nicht öffnen."
+
+fixed.operator = "Ihre IT hat das für dieses Gerät gesetzt."
+fixed.enrolled = "Dieses Gerät ist unter diesem Namen registriert. Eine spätere Änderung ist Sache Ihrer IT."
+fixed.mirror = "Der Ordner steht bereits an dieser Stelle. Von hier aus lässt er sich nicht verschieben."
+fixed.variable = "Diese Orte gehören zur Installation und werden nicht in diesem Fenster gesetzt."
+facts.title = "Was diesem Gerät mitgegeben wurde"
+
+welcome.step = "Überblick"
+welcome.title = "Was dieser Ordner ist"
+welcome.text = "elasticdms zeigt Ihre Briefkörbe, Ihre Archive und Ihre gespeicherten Suchen als Ordner. Er ist eine Ansicht und keine Ablage: Sie können darin nichts speichern und nichts ändern, umbenennen oder löschen."
+welcome.recorded = "Dateien werden erst beim Öffnen geladen, und jedes Öffnen wird als Zugriff protokolliert."
+welcome.language = "Sprache dieses Fensters"
+welcome.language_hint = "Die neue Sprache gilt ab dem nächsten Start von elasticdms."
+welcome.counterpart = "Dieses Gerät war zuvor mit einem anderen Server verbunden. Die lokale Kopie wurde gelöscht und die Anmeldung aufgehoben; die Einrichtung beginnt von vorn."
+# The languages name themselves: whoever lands in a window they cannot read still has to be
+# able to find their own language in the list.
+language.de = "Deutsch"
+language.en = "English"
+
+server.step = "Adressen"
+server.title = "Der Server"
+server.text = "Drei Adressen, und Ihre IT hat sie. Keine davon lässt sich aus den anderen ableiten: Das Anmeldegeheimnis geht an die zweite, und geraten wird hier nichts."
+server.api = "Dokumente"
+server.api_hint = "Woher die Dokumente kommen."
+server.auth = "Anmeldung"
+server.auth_hint = "Wo Sie sich anmelden. In aller Regel eine andere Adresse als die der Dokumente."
+server.app = "Weboberfläche"
+server.app_hint = "Die Weboberfläche Ihres Archivs. Jede Adresse, die der Server diesem Client später anbietet, wird an dieser gemessen."
+
+workstation.step = "Arbeitsplatz"
+workstation.title = "Dieser Arbeitsplatz"
+workstation.text = "Wie dieses Gerät in der Konsole heißt."
+workstation.text_with_mirror = "Wie dieses Gerät in der Konsole heißt und wo sein Ordner liegt."
+workstation.device = "Name dieses Geräts"
+workstation.device_hint = "Ihre IT sieht diesen Namen in der Konsole, und er bleibt nach einer Abmeldung auf diesem Gerät stehen. Er soll das Gerät benennen und nicht die Person."
+workstation.mirror = "Wo der Ordner liegt"
+workstation.mirror_hint = "Ein absoluter Pfad. Der Ordner selbst entsteht erst bei der Anmeldung."
+workstation.places = "Orte auf diesem Gerät"
+workstation.places_hint = "Über diese drei entscheidet die Installation. Sie stehen hier, damit Sie und Ihr Support sie finden."
+workstation.data = "Lokaler Zustand"
+workstation.staging = "Arbeitsbereich"
+workstation.holding = "Verwahrverzeichnis"
+
+code.step = "Registrierung"
+code.title = "Der Enrollment-Code"
+code.text = "Ihre IT gibt in der elasticdms-Konsole je Arbeitsplatz einen Code aus. Damit registriert sich dieses Gerät ein einziges Mal."
+code.label = "Enrollment-Code"
+code.hint = "Der Code wird einmal verbraucht und nicht gespeichert. Scheitert die Registrierung, geben Sie ihn hier erneut ein."
+
+signin.step = "Anmeldung"
+signin.title = "Anmelden"
+signin.text = "Die Anmeldung läuft in Ihrem Browser: dieses Fenster zeigt einen Code, den Sie dort bestätigen. Prüfen Sie dabei, dass die Seite dasselbe Kennzeichen zeigt wie dieses Fenster."
+signin.waiting = "Registrierung und Anmeldung dauern einen Moment. Lassen Sie dieses Fenster dabei offen."
+signin.signed_in = "Angemeldet. Der Ordner wird eingerichtet."
+signin.skip = "Sie können die Einrichtung auch ohne die Anmeldung abschließen und sich später aus dem Fenster heraus anmelden."
+
+extension.step = "Ordner"
+extension.title = "Den Ordner einschalten"
+extension.text = "macOS lässt kein Programm seinen eigenen Ordner einschalten. Bis Sie es selbst tun, bleibt der Ordner leer, und Dateien darin lassen sich nicht öffnen."
+extension.path = "Öffnen Sie die Systemeinstellungen, gehen Sie auf „Anmeldeobjekte & Erweiterungen“ und schalten Sie elasticdms unter „Erweiterungen“ ein."
+extension.button = "Systemeinstellungen öffnen"
+extension.again = "Noch einmal prüfen"
+extension.asking = "macOS wird gefragt …"
+extension.off = "Noch nicht eingeschaltet."
+extension.on = "Eingeschaltet. Der Ordner arbeitet."
+extension.skip = "Sie können die Einrichtung auch ohne diesen Schritt abschließen. Das Fenster sagt dann, solange es so bleibt, dass der Ordner noch nicht eingeschaltet ist."
+
+done.step = "Fertig"
+done.title = "Eingerichtet"
+done.text = "Dieses Gerät ist eingerichtet. Was noch fehlt — eine Freigabe durch Ihre IT, ein Netz, das nicht steht — sagt das Fenster in seiner Statuszeile; es fragt Sie nicht noch einmal."
+done.folder = "Der Ordner liegt hier"
+done.reopen = "Sie können diese Einrichtung jederzeit aus dem Fenster heraus wieder öffnen."
+
+wrong.empty = "Dieser Wert wird gebraucht; ohne ihn kann elasticdms nicht arbeiten."
+wrong.scheme = "Eine Adresse beginnt mit https:// und nennt dahinter den Namen des Servers."
+wrong.host = "Hinter https:// fehlt der Name des Servers."
+wrong.plaintext = "http:// überträgt alles unverschlüsselt. Erlaubt ist nur https:// — mit einer Ausnahme: dieses Gerät selbst."
+wrong.userinfo = "In dieser Adresse steht ein @ vor dem Namen des Servers. In „https://archiv.example@woanders.example“ wird woanders.example angesprochen und nicht archiv.example."
+wrong.query = "Eine Basisadresse trägt weder Fragezeichen noch Raute."
+wrong.too_long = "Dieser Wert ist länger als {count} Zeichen; mehr gibt elasticdms nicht weiter."
+wrong.path_absolute = "Geben Sie den vollständigen Pfad an, mit Laufwerksbuchstabe — zum Beispiel C:\\elasticdms."
+wrong.path_taken = "Diese Stelle ist auf diesem Gerät schon für etwas anderes in Gebrauch."
+wrong.code = "Der Enrollment-Code wird gebraucht; Ihre IT gibt ihn aus."
+
+# Was die Tür zum lokalen Zustand sagt, wenn sie einen Wert ablehnt, den die Seite hat
+# durchgehen lassen (setup::SettingRefused::user_key). Die Seite prüft die Form; dies sind die
+# Antworten, die nur die Anwendung geben kann.
+wrong.address = "Diese Adresse lässt sich nicht als Basisadresse verwenden. Erwartet wird https:// und dahinter der Name des Servers, ohne Fragezeichen und ohne Raute."
+wrong.not_yours = "Dieser Wert ist für dieses Gerät an anderer Stelle gesetzt. Die Einrichtung zeigt ihn und fragt nicht danach."
+wrong.path_holds = "Diese Stelle enthält Daten von elasticdms selbst. Beim Abmelden wird alles gelöscht, was im Ordner liegt — diese Daten gingen mit."
+wrong.path_not_empty = "In diesem Verzeichnis liegt bereits etwas. Beim Abmelden wird alles gelöscht, was im Ordner liegt; wählen Sie ein leeres oder neues Verzeichnis."
+wrong.control = "Dieser Name enthält ein Steuerzeichen. Ein Gerätename ist eine einzelne Zeile Text."
+wrong.language = "Diese Sprache spricht elasticdms nicht."
+wrong.not_stored = "Der Wert konnte auf diesem Gerät nicht gespeichert werden. Die Meldung dazu steht im Diagnoseprotokoll."
 
 # ── Der Spiegel: was im Explorer und im Finder steht ─────────────────────────────────────────
 #
@@ -124,6 +236,10 @@ signing_out = "Wird abgemeldet …"
 stopping = "elasticdms wird beendet."
 awaiting_approval = "Das Gerät wartet auf die Freigabe durch die IT. Vergleichen Sie diesen Fingerabdruck mit der Verfahrensdokumentation: {fingerprint}"
 enrollment_code_missing = "Dieses Gerät ist noch nicht eingerichtet; es fehlt der Enrollment-Code aus der elasticdms-Konsole (EDMS_ENROLLMENT_CODE)."
+# Was in der Statuszeile steht, solange niemand diesem Arbeitsplatz gesagt hat, wo sein Server
+# ist: Die Anwendung läuft, aber sie kann noch nichts anfragen (ADR-D13 §11).
+setup_needed = "Dieser Arbeitsplatz ist noch nicht eingerichtet. Öffnen Sie „Einrichtung“ und tragen Sie ein, wo Ihr Archiv liegt."
+setup_restart = "Die Einrichtung ist gespeichert, aber elasticdms konnte damit noch nicht starten. Starten Sie das Programm neu; bleibt es dabei, wenden Sie sich an Ihre IT."
 session_ended = "Die Sitzung ist zu Ende; bitte neu anmelden."
 device_code_expired = "Der Gerätecode ist abgelaufen; bitte die Anmeldung erneut starten."
 login_rejected = "Die Anmeldung wurde abgelehnt."

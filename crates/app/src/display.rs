@@ -58,6 +58,45 @@ pub trait DisplaySource: Send + Sync {
     /// (namespace v2 §3, ADR-D08 amended).
     fn open_baskets(&self) -> Result<(), DisplayError>;
 
+    /// What the set-up wizard shows (ADR-D13): every value with its origin, and what is already
+    /// done.
+    ///
+    /// `None` means: this source knows nothing about a set-up. That is not a state a shipped
+    /// build has — it is the marker for a wiring that does not implement this yet, and the window
+    /// then says that the set-up cannot be opened here instead of showing an empty wizard.
+    fn setup(&self) -> Option<SetupView> {
+        None
+    }
+
+    /// Takes the values of the wizard's input pages. Returns immediately, like everything here.
+    ///
+    /// **The source decides, not the page.** A value for a field the source reported as
+    /// [`Fixed::Operator`] is to be discarded there: the environment wins for every value
+    /// (ADR-D13 §1), and a page cannot be the place where that is enforced — it is the side that
+    /// could be got wrong.
+    fn apply_setup(&self, _values: &SetupValues) -> Result<(), DisplayError> {
+        Err(DisplayError::SetupNotAvailable)
+    }
+
+    /// The last page of the wizard was reached — `setup.completed` may be written.
+    ///
+    /// Reached, not succeeded (ADR-D13 §11): a device that is waiting for its approval has
+    /// finished its set-up honestly, and a wizard that reopened at every login would nag the one
+    /// person who can do least about it.
+    fn complete_setup(&self) -> Result<(), DisplayError> {
+        Err(DisplayError::SetupNotAvailable)
+    }
+
+    /// Whether the macOS extension is switched on — **the last known answer, at once**.
+    ///
+    /// The question itself (`DomainManagement::domain()`, `DomainDetails.enabled`) must not be
+    /// asked from here: it runs off the user-interface thread under the existing deadline, and a
+    /// timeout counts as "not on yet", never as an error (ADR-D13 §9). A source that has not
+    /// asked yet answers [`ExtensionState::Asking`]; the page asks again every two seconds.
+    fn extension_state(&self) -> ExtensionState {
+        ExtensionState::Asking
+    }
+
     /// Registers a waker that the source calls after every change to state or log — from any
     /// thread at all. The user interface then reads [`Self::state`] and the loaded rows afresh;
     /// that way a name that has just been redacted disappears from an already open window too.
@@ -146,6 +185,203 @@ pub struct LoginCode {
     pub anchor: Option<String>,
 }
 
+/// What the set-up wizard has to show (ADR-D13).
+///
+/// One value per thing the wizard can ask about, each with the reason why it may **not** be asked
+/// about here ([`SetupField`]) — and three places that are only ever shown. Which pages the
+/// wizard then has is worked out from this and nowhere else: a page all of whose values are fixed
+/// is not a step (ADR-D13 §3), and its values stand as facts on the first page instead.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SetupView {
+    /// Why the wizard is open.
+    pub reason: SetupReason,
+    /// Where the documents come from.
+    pub api_base: SetupField,
+    /// Where the sign-in happens.
+    pub auth_base: SetupField,
+    /// The web interface — every address the server offers is measured against it
+    /// (`edms_wire::basics::is_below`).
+    pub app_base: SetupField,
+    /// The name this workstation shows in the console.
+    pub device_name: SetupField,
+    /// Where the mirror lies. Windows only — on macOS the root is named by File Provider and
+    /// lies under `~/Library/CloudStorage/` (ADR-D13, measurement 5).
+    pub mirror_path: SetupField,
+    /// The language of the user interface, as a tag (`de`, `en`).
+    pub language: SetupField,
+    /// The code from the console. Its `value` is always empty: it is never stored (ADR-D13 §6),
+    /// and only [`SetupField::fixed`] says whether the device was given one.
+    pub enrollment_code: SetupField,
+    /// Where the local state lies — shown, never offered (the setting table lies at the end of
+    /// this path).
+    pub data_path: String,
+    /// The scratch area — shown, never offered.
+    pub staging_path: String,
+    /// The holding directory — shown, never offered.
+    pub holding_path: String,
+    /// Whether this device is registered with the archive. It decides whether the wizard asks
+    /// for an enrolment code at all.
+    pub enrolled: bool,
+    /// macOS: whether the extension is switched on.
+    pub extension: ExtensionState,
+}
+
+/// One value of the set-up: what holds today, and whether the user may change it here.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SetupField {
+    /// The value that holds — the effective one, whatever its origin.
+    pub value: String,
+    /// Why it is not a field. [`Fixed::No`]: it is one.
+    pub fixed: Fixed,
+}
+
+impl SetupField {
+    /// A value the user may change.
+    pub fn open(value: impl Into<String>) -> Self {
+        Self { value: value.into(), fixed: Fixed::No }
+    }
+
+    /// A value somebody else has decided.
+    pub fn fixed(value: impl Into<String>, fixed: Fixed) -> Self {
+        Self { value: value.into(), fixed }
+    }
+
+    /// Whether the wizard offers this value.
+    pub fn is_open(&self) -> bool {
+        self.fixed == Fixed::No
+    }
+}
+
+/// Why a value stands in the wizard as a line of text and not as a field.
+///
+/// Each of the four carries its own sentence in the catalogue, and none of them names the
+/// variable: `EDMS_API_BASE` is an operator surface and belongs in `doctor` (ADR-D13 §3). There
+/// is deliberately no "greyed-out field" — a disabled field is a field that failed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum Fixed {
+    /// Not fixed at all: an input field.
+    No,
+    /// The administrator set the variable. To set it is to fix it (ADR-D13 §1).
+    Operator,
+    /// Spent: the device is registered under this name.
+    Enrolled,
+    /// The root of the mirror is not this window's to move.
+    ///
+    /// Two ways to get here, one sentence: on Windows because the mirror already stands in this
+    /// place and a root left behind is worse than a path that stays; off Windows because the File
+    /// Provider names the root and puts it under `~/Library/CloudStorage/` (ADR-D13,
+    /// measurement 5) — there the value decides nothing, and the field is not even in the page
+    /// (`window::MIRROR`). Saying it here is what makes the source discard a value for it, which
+    /// is where §1 has to be enforced.
+    Mirror,
+    /// Only the installation decides this — the data path, the scratch area, the holding
+    /// directory (ADR-D13 §6).
+    Variable,
+}
+
+/// Why the wizard is open.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum SetupReason {
+    /// This device has never been walked through to the end.
+    First,
+    /// The counterpart changed (ADR-D13 §4): the mirror and the session were given up, and the
+    /// first page says so. Never a quiet re-point.
+    Counterpart,
+    /// The user opened it from the window. Then nothing is wrong and nothing is said about it.
+    ByHand,
+}
+
+/// Whether the macOS File Provider extension is switched on.
+///
+/// Three states and no error state: a timeout on the question is read as "not on yet"
+/// (ADR-D13 §9), because the page says the same thing either way and a dialog about
+/// `NSFileProviderErrorDomain` would be a sentence nobody can act on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum ExtensionState {
+    /// `userEnabled` is true: the folder works.
+    On,
+    /// Not switched on yet — and what a timeout counts as.
+    Off,
+    /// Not asked yet. The question runs off the user-interface thread; until the answer is there
+    /// the page says that it is asking.
+    Asking,
+}
+
+/// What the user typed into the wizard.
+///
+/// Every value is optional, because the page sends only what it offered. A value for a field the
+/// source reported as fixed is to be discarded by the source — see
+/// [`DisplaySource::apply_setup`]. The enrolment code travels in here and goes no further than
+/// the engine: it is not stored (ADR-D13 §6).
+#[derive(Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SetupValues {
+    /// Where the documents come from.
+    pub api_base: Option<String>,
+    /// Where the sign-in happens.
+    pub auth_base: Option<String>,
+    /// The web interface.
+    pub app_base: Option<String>,
+    /// The name in the console.
+    pub device_name: Option<String>,
+    /// Where the mirror lies (Windows).
+    pub mirror_path: Option<String>,
+    /// The language tag of the user interface.
+    pub language: Option<String>,
+    /// The code from the console, for this one registration.
+    pub enrollment_code: Option<String>,
+}
+
+/// Written out by hand, for the one field.
+///
+/// This module took deliberate care that the enrolment code is not a [`Value`] and has no setting
+/// key, "so no loop over the values can print it" — and then a derived `Debug` would have been
+/// the one way left: a `tracing::debug!(?values)` somebody adds later, or a panic message, would
+/// put a one-time secret from the console into the diagnostic log. No call site does that today;
+/// the type is what has to make it impossible.
+///
+/// [`Value`]: edms_engine::config::Value
+impl std::fmt::Debug for SetupValues {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SetupValues")
+            .field("api_base", &self.api_base)
+            .field("auth_base", &self.auth_base)
+            .field("app_base", &self.app_base)
+            .field("device_name", &self.device_name)
+            .field("mirror_path", &self.mirror_path)
+            .field("language", &self.language)
+            .field("enrollment_code", &self.enrollment_code.as_ref().map(|_| "<given>"))
+            .finish()
+    }
+}
+
+impl SetupValues {
+    /// The length of the first value longer than `limit` characters, or `None`.
+    ///
+    /// Characters, not bytes: the page counts what the user typed, and a name with umlauts in it
+    /// would otherwise be refused at a length the field itself accepted.
+    pub fn longest_over(&self, limit: usize) -> Option<usize> {
+        [
+            &self.api_base,
+            &self.auth_base,
+            &self.app_base,
+            &self.device_name,
+            &self.mirror_path,
+            &self.language,
+            &self.enrollment_code,
+        ]
+        .into_iter()
+        .flatten()
+        .map(|value| value.chars().count())
+        .find(|length| *length > limit)
+    }
+}
+
 /// Which of the two folders an action was about.
 ///
 /// A value, not a piece of text: the sentence about it is in the catalogue, and a `&'static str`
@@ -195,6 +431,13 @@ pub enum DisplayError {
     /// A sign-in address no browser gets (see `event_loop::check_login_address`).
     #[error("the sign-in address `{0}` will not be opened: only https:// is allowed")]
     LoginAddress(String),
+    /// This source knows no set-up ([`DisplaySource::setup`] answered `None`).
+    ///
+    /// A gap marker, not a state of the world: in a build whose wiring implements the set-up this
+    /// cannot occur. Until it does, a click on "Set-up" says so in one sentence instead of
+    /// opening an empty wizard.
+    #[error("this display source knows no set-up; the wizard cannot be opened")]
+    SetupNotAvailable,
 }
 
 impl DisplayError {
@@ -215,6 +458,7 @@ impl DisplayError {
             Self::LoginAddress(address) => {
                 catalogue.format(key::ERROR_LOGIN_ADDRESS, &[("address", address)])
             }
+            Self::SetupNotAvailable => catalogue.text(key::SETUP_NOT_AVAILABLE).to_owned(),
         }
     }
 }
