@@ -712,7 +712,15 @@ function task_verify {
 
     # Every transform against the MSI it belongs to. A transform is a promise about a file it does
     # not contain; the only honest check applies it and looks at what came out.
+    # What came back is checked before it is used. `properties_of_msi` ends in `return
+    # $properties` and cannot hand back anything else here — measured under StrictMode, an empty
+    # hashtable survives a function return as an empty hashtable — and yet on a runner `$before`
+    # arrived as nothing, and `.ContainsKey` then said only "You cannot call a method on a
+    # null-valued expression". Whatever it is, it is named here instead of crashing.
     $before = properties_of_msi $msi ''
+    if ($before -isnot [hashtable]) {
+        throw "Reading the properties of $(Split-Path -Leaf $msi) gave back $(if ($null -eq $before) { 'nothing at all' } else { "a $($before.GetType().FullName)" }) instead of a table of properties. That is a fault in this script, not in the package."
+    }
     foreach ($name in @('ProductCode', 'ProductLanguage')) {
         if (-not $before.ContainsKey($name)) {
             throw "The MSI has no property $name. Without it nothing can be said about a transform, and Intune detects by exactly that value."
@@ -724,6 +732,9 @@ function task_verify {
             throw "The transform $mst is missing although $culture stands in the language list. The MSI would go out alone, and an installation that names the transform fails with »1624 Error applying transforms«."
         }
         $after = properties_of_msi $msi $mst
+        if ($after -isnot [hashtable]) {
+            throw "Applying $(Split-Path -Leaf $mst) gave back $(if ($null -eq $after) { 'nothing at all' } else { "a $($after.GetType().FullName)" }) instead of a table of properties. That is a fault in this script, not in the transform."
+        }
         $expected = package_language $culture
         $reached = if ($after.ContainsKey('ProductLanguage')) { $after['ProductLanguage'] } else { '' }
         if ($reached -ne $expected) {
