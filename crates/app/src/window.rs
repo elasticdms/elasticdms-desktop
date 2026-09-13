@@ -482,8 +482,15 @@ mod tests {
         let html = page("n", german());
         assert!(EXTENSION.is_empty(), "the extension markup is compiled in on this platform");
         assert!(!html.contains(r#"data-page="extension""#), "the extension page is in the page");
+        // The identifier `setup-extension-open` DOES stand in the page here, and that is not a
+        // leak: view.css and view.js are one file each for every platform, so the style and the
+        // `onClickIfThere` binding travel everywhere. Neither can do anything without the button.
+        // What carries the promise is the pair above — no markup, and no index that reaches it —
+        // together with `event_loop`, where the request opens nothing off macOS and says in the
+        // log that it should never have arrived. Asserting on the raw string instead tested the
+        // build of the stylesheet, and it failed on Windows for a reason that was not the rule.
         assert!(
-            !html.contains("setup-extension-open"),
+            !html.contains(r#"id="setup-extension-open""#),
             "the button to System Settings is in the page"
         );
     }

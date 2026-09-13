@@ -1402,9 +1402,17 @@ mod tests {
         assert!(matches!(refused, SettingRefused::Path(_)), "{refused}");
         assert_eq!(store.setting(SETTING_MIRROR_PATH).unwrap(), None);
 
-        let good = set_value(&mut store, &found, Value::MirrorPath, "/tmp/edms/elsewhere")
+        // Built, not written out: `/tmp/…` is absolute on a Unix and a rootless path on Windows,
+        // where `Path::is_absolute` wants a drive or a UNC share. This test refused a good path
+        // there and only said so on a runner, which is the failure this whole set-up is about.
+        let elsewhere = std::path::Path::new(&staging)
+            .parent()
+            .expect("the staging directory lies somewhere")
+            .join("elsewhere");
+        let elsewhere = elsewhere.to_str().expect("a path this test itself built");
+        let good = set_value(&mut store, &found, Value::MirrorPath, elsewhere)
             .expect("an absolute path of its own");
-        assert_eq!(good, "/tmp/edms/elsewhere");
+        assert_eq!(good, elsewhere);
     }
 
     #[test]
