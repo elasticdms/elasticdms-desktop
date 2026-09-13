@@ -379,6 +379,19 @@ function sign([string]$path, [string]$what) {
     run_tool $signtool $arguments "$signtool sign /fd sha256 /tr $stamp /td sha256 /f *** /p *** $path"
 }
 
+# One call into the Windows Installer automation, with a name on it.
+#
+# WHY THIS EXISTS: these calls go through `InvokeMember`, and when one of them hands back nothing
+# the next line says "You cannot call a method on a null-valued expression" — without naming the
+# call, the file or the mode. That sentence cost a release build: the MSI and both transforms were
+# signed, and the check behind them failed with nothing anybody could act on.
+function com_call([object]$target, [string]$member, [object[]]$arguments, [string]$what) {
+    if ($null -eq $target) {
+        throw "$what could not be done: the object it needed does not exist. A call before this one handed back nothing."
+    }
+    return $target.GetType().InvokeMember($member, 'InvokeMethod', $null, $target, $arguments)
+}
+
 # The MSI file table — the only reliable list of what gets installed. A text search in the raw
 # image would not find the names inside the embedded cabinet file.
 function files_in_msi([string]$msi) {
@@ -388,11 +401,11 @@ function files_in_msi([string]$msi) {
     $names = @()
     try {
         $wi = New-Object -ComObject WindowsInstaller.Installer
-        $db = $wi.GetType().InvokeMember('OpenDatabase', 'InvokeMethod', $null, $wi, @($msi, 0))
-        $view = $db.GetType().InvokeMember('OpenView', 'InvokeMethod', $null, $db, @('SELECT `FileName` FROM `File`'))
-        $view.GetType().InvokeMember('Execute', 'InvokeMethod', $null, $view, $null)
+        $db = com_call $wi 'OpenDatabase' @($msi, 0) "opening $msi for reading"
+        $view = com_call $db 'OpenView' @('SELECT `FileName` FROM `File`') "reading the file table of $msi"
+        com_call $view 'Execute' $null "reading the file table of $msi" | Out-Null
         while ($true) {
-            $set = $view.GetType().InvokeMember('Fetch', 'InvokeMethod', $null, $view, $null)
+            $set = com_call $view 'Fetch' $null "reading the file table of $msi"
             if ($null -eq $set) { break }
             $names += $set.GetType().InvokeMember('StringData', 'GetProperty', $null, $set, @(1))
             [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($set)
@@ -437,17 +450,18 @@ function properties_of_msi([string]$msi, [string]$transform) {
         # Mode 1 is transact, because a read-only database takes no transform. Nothing is
         # committed; the copy goes away in the finally.
         $mode = if ($transform) { 1 } else { 0 }
-        $db = $wi.GetType().InvokeMember('OpenDatabase', 'InvokeMethod', $null, $wi, @($source, $mode))
+        $what = if ($transform) { "opening a copy of $(Split-Path -Leaf $msi) so that $(Split-Path -Leaf $transform) can be applied to it" } else { "reading the properties of $(Split-Path -Leaf $msi)" }
+        $db = com_call $wi 'OpenDatabase' @($source, $mode) $what
         if ($transform) {
             # The second argument suppresses error conditions, and 0 suppresses none: a transform
             # that does not fit this MSI has to fail here, in the build, and not at the customer as
             # »1624 Error applying transforms«.
-            $db.GetType().InvokeMember('ApplyTransform', 'InvokeMethod', $null, $db, @($transform, 0))
+            com_call $db 'ApplyTransform' @($transform, 0) "applying $(Split-Path -Leaf $transform)" | Out-Null
         }
-        $view = $db.GetType().InvokeMember('OpenView', 'InvokeMethod', $null, $db, @('SELECT `Property`, `Value` FROM `Property`'))
-        $view.GetType().InvokeMember('Execute', 'InvokeMethod', $null, $view, $null)
+        $view = com_call $db 'OpenView' @('SELECT `Property`, `Value` FROM `Property`') $what
+        com_call $view 'Execute' $null $what | Out-Null
         while ($true) {
-            $set = $view.GetType().InvokeMember('Fetch', 'InvokeMethod', $null, $view, $null)
+            $set = com_call $view 'Fetch' $null $what
             if ($null -eq $set) { break }
             $name = $set.GetType().InvokeMember('StringData', 'GetProperty', $null, $set, @(1))
             $properties[$name] = $set.GetType().InvokeMember('StringData', 'GetProperty', $null, $set, @(2))
@@ -809,6 +823,16 @@ try {
 }
 catch {
     Write-Host "Error: $($_.Exception.Message)" -ForegroundColor Red
+    # The message alone is not always enough to act on — "You cannot call a method on a null-valued
+    # expression" says nothing about where. The position and the call stack say it, and they cost
+    # three lines in a log that nobody reads until something has gone wrong.
+    if ($_.InvocationInfo) {
+        Write-Host "  at $($_.InvocationInfo.ScriptName):$($_.InvocationInfo.ScriptLineNumber)" -ForegroundColor Red
+        Write-Host "  $($_.InvocationInfo.Line.Trim())" -ForegroundColor Red
+    }
+    if ($_.ScriptStackTrace) {
+        Write-Host ($_.ScriptStackTrace -split "`n" | ForEach-Object { "  $_" }) -ForegroundColor Red
+    }
     # Without this `exit` PowerShell would return the success of the last successful line, and the
     # workflows (which check $LASTEXITCODE) would take a failure for a success.
     exit 1
