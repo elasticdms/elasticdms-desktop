@@ -1,0 +1,10 @@
+{
+  "device_code": "GmRhmhcxhwEzkoEqiMEg_DnyEysNkuNhszIySk9eS",
+  "user_code": "WQPX-7TRM",
+  "verification_uri": "https://app.elasticdms.io/kiosk",
+  "verification_uri_complete": "https://app.elasticdms.io/kiosk?user_code=WQPX-7TRM&anchor=K7M4",
+  "expires_in": 300,
+  "interval": 5,
+  "urn:elasticdms:anchor": "K7-M4",
+  "urn:elasticdms:device_label": "eScan Poststelle EG · HH-Rothenbaum"
+}

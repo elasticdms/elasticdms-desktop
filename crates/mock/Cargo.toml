@@ -1,0 +1,54 @@
+# edms-mock — the server that does not exist yet.
+#
+# This mock speaks the contract from docs/spec/03-api-contract-folder-client.md the way the server
+# should speak it — including the mandatory DPoP nonce, so that the client really takes the retry
+# path.
+# It is a test harness, not a product: nothing here may ever go into a release.
+#
+# Foreign crates, each with its reason:
+# - axum/tokio: a real listener on 127.0.0.1, not a test double inside the process. Only that way
+#   do headers, status codes and the long poll run through the same stack as in production.
+# - base64: the opaque cursor and the nonce stand on the wire as base64url — the same encoding as
+#   in the rest of the house, not a second, hand-written one.
+# - tracing/tracing-subscriber: whoever starts the mock wants to see which request arrived and why
+#   it was refused; without a log one looks for the reason in the client.
+
+[package]
+name = "edms-mock"
+description = "Contract-faithful mock server for the folder client (development and contract tests)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "edms-mock"
+path = "src/main.rs"
+
+[dependencies]
+edms-core.workspace = true
+# Feature "forge": anchors, key statements, signed delivery commands and the server-side DPoP
+# check. Only this crate may pull it as a normal dependency (architecture rule).
+edms-crypto = { workspace = true, features = ["forge"] }
+edms-wire.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "net", "time", "sync", "signal", "io-util"] }
+axum.workspace = true
+base64.workspace = true
+# futures-core: only for the deliberately truncated content body (contract test T13). hyper checks
+# a self-set Content-Length against the known size of the body and aborts; a stream has no known
+# size, and only with it can the case that matters be reproduced: `200`, the right headers, too few
+# bytes. The version is the one already present in the workspace (through hyper/tower), so no
+# second dependency version.
+futures-core = "0.3.34"
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "net", "time", "io-util"] }
+
+[lints]
+workspace = true

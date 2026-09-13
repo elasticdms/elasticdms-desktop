@@ -1,0 +1,15 @@
+{
+  "kid": "edms-kms-2026-09",
+  "kty": "EC", "crv": "P-256",
+  "x": "gbSRUaCT8FRHbSq1oR2QP2Y4OKDSuiC3_aigrNgEzfw",
+  "y": "1lis6j8wpAYp0ZQeYB3srLGomXGVhf-ExpmyZPfzP30",
+  "alg": "ES256", "use": "sig",
+  "role": "evidence-signing",
+  "issuer": "https://api.elasticdms.io",
+  "tenantId": "t_acme",
+  "notBefore": "2026-09-01T00:00:00Z",
+  "notAfter": "2027-09-01T00:00:00Z",
+  "keySetVersion": 7,
+  "supersedes": "edms-kms-2025-09",
+  "thumbprint": "8ji41YR5dcmyQ9yXVvI2DegpkzJlf8EK1EnNjMlv-eA"
+}

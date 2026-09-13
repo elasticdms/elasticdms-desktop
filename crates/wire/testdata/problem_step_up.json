@@ -1,0 +1,11 @@
+{
+  "type": "https://errors.elasticdms.io/insufficient-authentication",
+  "title": "Stärkere Anmeldung erforderlich",
+  "status": 401,
+  "detail": "Der Ordner Buchhaltung/Kreditoren/2026 verlangt eine Anmeldung der Stufe idp:mfa, die höchstens 120 Sekunden alt ist.",
+  "instance": "/v1/documents/doc_01JK4R7ZQ8M3N5P6T9V0WXYZAB/content",
+  "requiredAcr": "urn:elasticdms:acr:idp:mfa",
+  "requiredAuthenticatorClass": "BESITZ_FREMDGERAET",
+  "maxAgeSeconds": 120,
+  "traceId": "01JB8Z…"
+}

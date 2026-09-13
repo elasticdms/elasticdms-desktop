@@ -1,0 +1,83 @@
+<!doctype html>
+<!--
+  The window: the local usage log (ADR-D07).
+
+  The placeholders {{NONCE}}, {{STYLE}}, {{SCRIPT}}, {{LANGUAGE}} and {{CATALOG}} are filled in by
+  `window::page`. The nonce is new on every start; without it the web view executes neither style
+  nor script. The policy ("default-src 'none'") leaves the page no network: no image, no font, no
+  fetch, no WebSocket. A document title from the archive therefore cannot load anything and cannot
+  give anything away, even if it contained markup (ADR-D07: "the page is embedded, loads nothing
+  and navigates nowhere").
+
+  **No sentence stands in this file.** Every visible text carries `data-text="<key>"`, and the
+  script fills it from the catalogue the app hands in ({{CATALOG}}). A page with texts of its own
+  would be a second catalogue, and a second catalogue is one that gets forgotten when the first is
+  translated.
+-->
+<html lang="{{LANGUAGE}}">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; style-src 'nonce-{{NONCE}}'; script-src 'nonce-{{NONCE}}'; img-src 'none'; font-src 'none'; connect-src 'none'; form-action 'none'; base-uri 'none'; frame-ancestors 'none'"
+    />
+    <title>elasticdms</title>
+    <style nonce="{{NONCE}}">
+{{STYLE}}
+    </style>
+  </head>
+  <body>
+    <header class="header">
+      <div class="account">
+        <span class="dot" id="dot" data-tone="NORMAL" aria-hidden="true"></span>
+        <div class="account-text">
+          <h1 id="account-name">elasticdms</h1>
+          <p class="statusLine" id="statusLine" aria-live="polite" data-text="window.loading"></p>
+        </div>
+      </div>
+      <div class="buttons">
+        <button type="button" id="button-sign-in" data-text="window.button.sign_in" hidden></button>
+        <button type="button" id="button-folder" data-text="window.button.folder"></button>
+        <button type="button" id="button-baskets" data-text="window.button.baskets"></button>
+      </div>
+    </header>
+
+    <section class="login-panel" id="login-panel" hidden aria-labelledby="login-panel-title">
+      <h2 id="login-panel-title" data-text="window.login.title"></h2>
+      <p class="login-panel-text" data-text="window.login.text"></p>
+      <p class="userCode" id="userCode"></p>
+      <dl class="login-data">
+        <dt data-text="window.login.address"></dt>
+        <dd id="login-address"></dd>
+        <dt data-text="window.login.anchor"></dt>
+        <dd id="login-anchor"></dd>
+      </dl>
+      <button type="button" id="button-login-page" data-text="window.login.button"></button>
+    </section>
+
+    <main>
+      <div class="heading">
+        <h2 id="list-title" data-text="window.list.title"></h2>
+        <p class="local-note" data-text="window.list.local_note"></p>
+      </div>
+
+      <ul class="list" id="list" aria-labelledby="list-title"></ul>
+
+      <p class="empty" id="empty" data-text="window.list.empty" hidden></p>
+
+      <div class="more">
+        <button type="button" id="button-more" data-text="window.list.load_older" hidden></button>
+      </div>
+    </main>
+
+    <p class="notice" id="notice" role="alert" hidden></p>
+
+    <script nonce="{{NONCE}}">
+      window.__edmsCatalog = {{CATALOG}};
+    </script>
+    <script nonce="{{NONCE}}">
+{{SCRIPT}}
+    </script>
+  </body>
+</html>

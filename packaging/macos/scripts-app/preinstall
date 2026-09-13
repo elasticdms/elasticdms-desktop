@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+#
+# preinstall des Bestandteils de.elasticdms.folderclient.app.
+#
+# DER GRUND: Bei einer Aktualisierung liegt das alte Buendel noch da und das alte Programm laeuft
+# womoeglich. Wer eine laufende App unter den Fuessen austauscht, bekommt eine Mischung aus alter
+# Erweiterung im Speicher und neuem Programm auf der Platte — und genau diese Mischung meldet
+# spaeter nichts, sondern zeigt einen leeren Ordner. Darum erst entladen, dann ersetzen.
+#
+# Der Installer ruft dieses Skript als root auf. Es darf unter keinen Umstaenden fehlschlagen:
+# jeder Exitcode ungleich 0 bricht die ganze Installation ab. Deshalb endet es fest mit `exit 0`,
+# und jeder Schritt ist ein Versuch, keine Bedingung.
+
+set -uo pipefail
+
+LABEL="de.elasticdms.folderclient"
+
+# Wer sitzt vor dem Bildschirm? Das Anmeldeobjekt gehoert seiner GUI-Sitzung, nicht root. Bei
+# einem Ausrollen ohne angemeldeten Nutzer meldet `stat` „root" oder „loginwindow" — dann gibt es
+# nichts zu entladen, und das ist kein Fehler.
+USER="$(/usr/bin/stat -f %Su /dev/console 2>/dev/null || true)"
+if [ -n "$USER" ] && [ "$USER" != "root" ] && [ "$USER" != "loginwindow" ]; then
+	USER_ID="$(/usr/bin/id -u "$USER" 2>/dev/null || true)"
+	if [ -n "$USER_ID" ]; then
+		/bin/launchctl bootout "gui/$USER_ID/$LABEL" 2>/dev/null || true
+	fi
+fi
+
+# Falls das Programm ohne Anmeldeobjekt gestartet wurde (Handinstallation, Doppelklick), beendet
+# `pkill` es. Kein -9: die App raeumt beim Beenden ihre Einzelinstanzsperre ab.
+/usr/bin/pkill -x elasticdms 2>/dev/null || true
+
+exit 0

@@ -1,0 +1,7 @@
+{
+  "type": "https://errors.elasticdms.io/delivery-command-already-acknowledged",
+  "title": "Befehl bereits quittiert",
+  "status": 409,
+  "detail": "Dieser Befehl wurde bereits mit APPLIED quittiert; eine zweite Quittung ändert nichts.",
+  "instance": "/v1/delivery/commands/cmd_01JKC4D6E8F0G2H4J6K8M0N2P4:acknowledge"
+}

@@ -1,0 +1,41 @@
+# edms-bridge — the namespace source over a line.
+#
+# On macOS the File Provider extension runs in a sandboxed process of its own; the engine lives in
+# the app. This line carries edms_core::port::NamespaceSource across.
+# Only std: no tokio in the extension, whose threads belong to Foundation.
+#
+# Foreign crates, each with its reason:
+# - base64: the secret stands as base64url in bridge.json — the same encoding as in the rest of the
+#   house (edms-crypto), not a second, self-written one.
+# - tracing: a rejected handshake or a line that broke off has to stand in the log of app and
+#   extension, otherwise nobody looks for the reason behind an empty Finder folder.
+# - libc (macOS only): getpwuid_r for the real home directory. In the sandbox $HOME points into the
+#   extension's container, but the rendezvous file lies in the real one (src/home.rs).
+
+[package]
+name = "edms-bridge"
+description = "Line between the macOS File Provider extension and the app (namespace source)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+edms-core.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+base64.workspace = true
+
+[target.'cfg(target_os = "macos")'.dependencies]
+libc = "0.2.189"
+
+[dev-dependencies]
+# Only for the language of the fixtures: the line carries entries, and entries are named.
+edms-i18n.workspace = true
+tempfile.workspace = true
+
+[lints]
+workspace = true

@@ -1,0 +1,49 @@
+# edms-engine — the engine: session, namespace reconcile, hydration, delivery, ingest.
+#
+# It knows network, store and cryptography, but no platform API: the platform faces it only as
+# edms_core::port::FileSystem, and it faces the platform as a namespace source.
+
+[package]
+name = "edms-engine"
+description = "The synchronisation engine of the folder client"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+edms-core.workspace = true
+# The sentences the engine says to the user; the language comes from the configuration, which the
+# app fills from the operating system's locale.
+edms-i18n.workspace = true
+edms-crypto.workspace = true
+edms-wire.workspace = true
+edms-net.workspace = true
+edms-store.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+# Features instead of the default: the engine owns its own runtime (`rt-multi-thread`), publishes
+# state and events (`sync`), beats the reconcile (`time`), writes the scratch area (`fs`,
+# `io-util`) and bounds concurrent loads (`rt`, over `JoinSet`). The features stand here and not in
+# the workspace, because they belong to this crate.
+tokio = { workspace = true, features = [
+  "rt",
+  "rt-multi-thread",
+  "sync",
+  "time",
+  "fs",
+  "io-util",
+  "macros",
+] }
+sha2.workspace = true
+notify.workspace = true
+
+[dev-dependencies]
+edms-mock.workspace = true
+tempfile.workspace = true
+
+[lints]
+workspace = true

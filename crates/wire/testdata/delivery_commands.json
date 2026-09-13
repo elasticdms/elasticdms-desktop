@@ -1,0 +1,28 @@
+{
+  "items": [
+    {
+      "commandId": "cmd_01JKC4D6E8F0G2H4J6K8M0N2P4",
+      "deviceId": "dev_01JK4R7ZQ8M3N5P6T9V0WXYZAB",
+      "kind": "DEHYDRATE",
+      "issuedAt": "2026-09-11T07:30:00Z",
+      "payload": {
+        "documentIds": [
+          "doc_01JK4R7ZQ8M3N5P6T9V0WXYZAB"
+        ],
+        "reason": "ERASURE"
+      },
+      "serverSignature": "eyJhbGciOiJFUzI1NiIsInR5cCI6ImVkbXMtZGVsaXZlcnktY29tbWFuZCtqd3QiLCJraWQiOiJlZG1zLWttcy0yMDI2LTA5In0..MEQCIH2rXk9pQeVwT4mB1sZ0dLcJx7oNfR3aYuK8gPqW5tCvAiA9fL0mXbQ7zH1uEjR6oNcP4sVtY2gKdW8xB3rMqLeZTw"
+    },
+    {
+      "commandId": "cmd_01JKC5E7F9G1H3J5K7M9N1P3Q5",
+      "deviceId": "dev_01JK4R7ZQ8M3N5P6T9V0WXYZAB",
+      "kind": "RECONCILE",
+      "issuedAt": "2026-09-11T07:30:04Z",
+      "payload": {
+        "container": "arc_01JKA9P4S6T8V0W2X4Y6Z8A1B3/cas_01JKA7M2Q9R4S6T8V0W1X3Y5Z7"
+      },
+      "serverSignature": "eyJhbGciOiJFUzI1NiIsInR5cCI6ImVkbXMtZGVsaXZlcnktY29tbWFuZCtqd3QiLCJraWQiOiJlZG1zLWttcy0yMDI2LTA5In0..MEUCIQCw8n2LrV6tYqJ0dM5xBfKe3sPzR1oNhTgW7uXvA4iQcgIgL9mBd0KpXzS6yNfW2rEjHt1oPvQ3kCbUZ8aM5RxTnLE"
+    }
+  ],
+  "nextCursor": "eyJzIjoxODAyfQ"
+}

@@ -1,0 +1,28 @@
+{
+  "sentAtDevice": "2026-09-11T09:35:02+02:00",
+  "app": {
+    "versionName": "1.0.0",
+    "buildHash": "sha256:924fb28aff51ee6e70cf048ac486fcbf9c3fd7a609fbc537f07173fdd5cda441",
+    "signatureSha256": "sha256:cd00868ed978944d17c592fd5d711cdb6263f60baa40c7bf6fa4a33ec9996864"
+  },
+  "platform": {
+    "os": "Windows",
+    "osVersion": "10.0.26100",
+    "arch": "x86_64"
+  },
+  "serverKeys": {
+    "keySetVersion": 7,
+    "anchorState": "confirmed",
+    "anchorSetFingerprint": "NGJQ-CWV1-AHAR-Z4FJ",
+    "signingKidsHeld": [
+      "edms-kms-2026-09"
+    ],
+    "revocationsHeld": 0,
+    "findings": []
+  },
+  "delivery": {
+    "unacknowledgedCommands": 1,
+    "oldestUnacknowledgedAt": "2026-09-11T07:30:04Z",
+    "lastPollAt": "2026-09-11T09:34:37Z"
+  }
+}

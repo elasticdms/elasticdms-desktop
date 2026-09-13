@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<!--
+  en-US.wxl — every sentence the administrator and the user read on the installation package in
+  English. The counterpart of crates/i18n/catalog/en.toml for the four places that are shown not by
+  the client but by the Windows Installer.
+
+  A real translation, not a transliteration of the German — the same rule the text catalogues
+  follow. A key only one of the two files knows is a WIX0102 at build time and not a surprise at
+  the customer: `wix build` resolves !(loc.…) before it writes the database.
+
+  PackageLanguage is not a sentence but this catalogue's language identifier (LCID). It stands here
+  and not in the build script so that one language is one file: culture, codepage, identifier and
+  text. scripts\windows-package.ps1 reads it from here.
+
+  This catalogue is not the package's own language — it arrives as a transform beside the MSI. Why
+  that and not a second MSI stands in scripts\windows-package.ps1 at $Cultures.
+-->
+
+<WixLocalization xmlns="http://wixtoolset.org/schemas/v4/wxl" Culture="en-US" Codepage="1252">
+
+  <String Id="PackageLanguage" Value="1033" />
+
+  <!-- Stands in the Comments column of Programs and Features. -->
+  <String Id="ProductComments"
+          Value="A reading mirror of the elasticdms archive: case files (Akten) and saved searches in File Explorer." />
+
+  <!-- The name of the single feature; without a Change button only a log ever shows it. -->
+  <String Id="FeatureTitle" Value="elasticdms folder client" />
+
+  <String Id="DowngradeBlocked"
+          Value="A newer version of elasticdms is already installed. The installation is cancelled." />
+
+  <String Id="NeedsSixtyFourBitWindows"
+          Value="elasticdms exists only for 64-bit Windows; this machine runs a 32-bit version." />
+
+</WixLocalization>

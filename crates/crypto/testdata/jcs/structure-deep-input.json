@@ -1,0 +1,11 @@
+{
+  "leer": {},
+  "leeresArray": [],
+  "null": null,
+  "verschachtelt": {"z": {"b": [{}, [], [[]], {"y": null, "x": {}}], "a": true}, "m": false},
+  "gemischt": [{"b": 1, "a": 2}, "text", 3, null, true, [ {"d": {}, "c": []} ]],
+  "": "leerer Schluessel",
+  "ab": "ab",
+  "aa": "aa",
+  "a": "a"
+}

@@ -1,0 +1,6 @@
+{
+  "type": "https://errors.elasticdms.io/device-id-conflict",
+  "title": "device-id-conflict",
+  "status": 409,
+  "detail": "Unter dieser Kennung liegt ein anderer öffentlicher Schlüssel."
+}

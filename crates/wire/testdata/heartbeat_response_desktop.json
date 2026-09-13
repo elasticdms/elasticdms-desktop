@@ -1,0 +1,14 @@
+{
+  "serverTime": "2026-09-11T07:35:02.318Z",
+  "clockOffsetMs": -412,
+  "deviceState": "active",
+  "configEtag": "8",
+  "commands": [
+    {
+      "command": "resyncServerKeys",
+      "reason": "key_rotated",
+      "message": "Der Serverschlüsselsatz wurde erneuert."
+    }
+  ],
+  "nextHeartbeatSeconds": 300
+}

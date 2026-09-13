@@ -1,0 +1,9 @@
+{
+  "access_token": "eyJhbGciOiJFUzI1NiIsInR5cCI6ImF0K2p3dCJ9.kiosk-user-access-token",
+  "token_type": "DPoP",
+  "expires_in": 300,
+  "refresh_token": "rt_01JB8Z5K3M4N6P7Q8R9S0T1U2V",
+  "refresh_token_expires_in": 1800,
+  "scope": "openid profile folders:read scan:operate scan:review documents:read destruction:acknowledge",
+  "id_token": "eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXVCJ9.kiosk-id-token"
+}

@@ -1,0 +1,7 @@
+{
+  "type": "https://errors.elasticdms.io/access-log-unavailable",
+  "title": "Zugriff nicht protokollierbar",
+  "status": 503,
+  "detail": "Das Zugriffsprotokoll ist nicht erreichbar. Ohne Protokolleintrag wird kein Inhalt ausgeliefert.",
+  "instance": "/v1/documents/doc_01JK4R7ZQ8M3N5P6T9V0WXYZAB/content"
+}

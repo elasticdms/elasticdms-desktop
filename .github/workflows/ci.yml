@@ -1,0 +1,280 @@
+# ci.yml — the only place where the Windows code really runs, and the only one where packaging is
+# touched regularly.
+#
+# The development machine is a Mac; there the Windows layer is only compiled (cargo xwin check).
+# Here the tests run on a real Windows — the pure parts of edms-cfapi included. Not even CI
+# registers a sync root (it lacks the package identity for that, ADR-D06); that stays a step on a
+# Windows machine.
+#
+# ON TOP: every push also builds both delivery packages — unsigned, with the same scripts and in
+# the same order as release.yml. A packaging pipeline that only runs at release time rots in
+# silence: a runner image changes its WiX version, a path no longer matches, and it would be
+# noticed on release day. Here the same fault costs a red tick instead of a postponed rollout.
+#
+# NO STEP HERE NEEDS A SECRET. A run from a fork gets nothing but GITHUB_TOKEN (GitHub docs,
+# "Using secrets in GitHub Actions") and still has to be able to go green.
+#
+# Cost if the repository is private: Linux $0.006, Windows $0.010, macOS $0.062 per minute; the two
+# packaging jobs together are roughly $1–2 per push (estimated, not measured). If that gets too
+# much, the place to turn is the `if:` expression of the two packaging jobs — the narrower version
+# stands in docs/DELIVERY.md, section "What a run costs".
+
+name: ci
+
+on:
+  push:
+  pull_request:
+  # Once a week without a push: catches the drift of the runner images (Rust, WiX, Windows SDK),
+  # which would otherwise only show up at the next release.
+  schedule:
+    - cron: "0 4 * * 1"
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  macos:
+    name: Tests macOS
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v7
+      - name: Toolchain from rust-toolchain.toml
+        run: rustup show
+      # v2.9.2, pinned to the commit instead of the movable tag (CVE-2025-30066:
+      # tj-actions/changed-files, all version tags moved onto a malicious commit).
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
+        with:
+          shared-key: ci-macos
+          # Only main fills the repository's cache budget (10 GB); branches and PRs read it.
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Format
+        run: cargo fmt --all --check
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+      - name: Tests
+        run: cargo test --workspace
+      - name: Build and check the bundle (installs nothing)
+        run: scripts/macos-bundle.sh build
+
+  windows:
+    name: Tests Windows
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v7
+      - name: Toolchain from rust-toolchain.toml
+        run: rustup show
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
+        with:
+          shared-key: ci-windows
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+      - name: Tests
+        run: cargo test --workspace
+
+  # ── The delivery packages, unsigned ──────────────────────────────────────────────────────────
+  package-macos:
+    name: Package macOS (unsigned)
+    # Tags are built by release.yml; the same package twice would only be time paid for twice.
+    if: github.ref_type != 'tag'
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v7
+      - name: Toolchain from rust-toolchain.toml
+        run: rustup show
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
+        with:
+          # The same key as in release.yml: there save-if is false, because this job here fills
+          # the cache.
+          shared-key: release-macos
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: Read the version
+        run: |
+          set -euo pipefail
+          version="$(awk '
+            /^\[workspace\.package\]/ { inside = 1; next }
+            /^\[/                     { inside = 0 }
+            inside && /^version *= *"/  { gsub(/^version *= *"|"$/, ""); print; exit }
+          ' Cargo.toml)"
+          [ -n "$version" ] || {
+            printf 'Cargo.toml has no line of the form version = "…" under [workspace.package].\n' >&2
+            exit 1
+          }
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+
+      - name: Build the package
+        env:
+          # "-" is ad hoc, empty means an unsigned package: no certificate, no secret, no failure.
+          # macos-package.sh runs all the way through with this.
+          SIGNING_IDENTITY: "-"
+          INSTALLER_IDENTITY: ""
+        run: |
+          set -euo pipefail
+          if [ ! -x scripts/macos-package.sh ]; then
+            printf 'scripts/macos-package.sh is missing or not executable; without that script no .pkg arises.\n' >&2
+            exit 1
+          fi
+          df -h /
+          scripts/macos-package.sh build
+          df -h /
+
+      - name: Check the package and mark it unsigned
+        run: |
+          set -euo pipefail
+          package="target/pkg/elasticdms-$VERSION.pkg"
+          if [ ! -f "$package" ]; then
+            printf 'scripts/macos-package.sh did not produce %s.\n' "$package" >&2
+            ls -la target/pkg 2>/dev/null >&2 || printf '(no target/pkg)\n' >&2
+            exit 1
+          fi
+          # The same bar as in release.yml: `pkgutil --payload-files` shows only the first
+          # component of a product archive (measured), so expand it and read every bill of
+          # materials.
+          unpacked="$RUNNER_TEMP/package-contents"
+          rm -rf "$unpacked"
+          pkgutil --expand "$package" "$unpacked"
+          content="$RUNNER_TEMP/package-contents.txt"
+          : > "$content"
+          found=0
+          for bom in "$unpacked"/*.pkg/Bom; do
+            [ -f "$bom" ] || continue
+            lsbom -s "$bom" >> "$content"
+            found=$((found + 1))
+          done
+          if [ "$found" -eq 0 ]; then
+            printf '%s holds no component with a bill of materials; this check would have read nothing.\n' "$package" >&2
+            exit 1
+          fi
+          if grep -i -q mock "$content"; then
+            printf 'The package holds the test rig edms-mock; it never belongs in a product:\n' >&2
+            grep -i mock "$content" >&2
+            exit 1
+          fi
+          if ! grep -q '/elasticdms\.app/Contents/MacOS/elasticdms$' "$content"; then
+            printf 'The package holds no elasticdms.app/Contents/MacOS/elasticdms.\n' >&2
+            exit 1
+          fi
+          unsigned="target/pkg/elasticdms-$VERSION-unsigned.pkg"
+          mv "$package" "$unsigned"
+          echo "PACKAGE=$unsigned" >> "$GITHUB_ENV"
+          {
+            printf 'Built: %s\n\n' "$(basename "$unsigned")"
+            printf 'Ad-hoc signed and not notarised — a test specimen from CI that must not be distributed. Distributable packages arise only in release.yml with the secrets deposited (docs/DELIVERY.md).\n'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: elasticdms-desktop-installer-macos-${{ env.VERSION }}-unsigned
+          # Exactly the product, not the component packages from target/pkg/.
+          path: ${{ env.PACKAGE }}
+          if-no-files-found: error
+          # A .pkg is already packed; zipping it a second time only costs time.
+          compression-level: 0
+          retention-days: 7
+
+  package-windows:
+    name: Package Windows (unsigned)
+    if: github.ref_type != 'tag'
+    runs-on: windows-2025
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v7
+      - name: Toolchain from rust-toolchain.toml
+        run: rustup show
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
+        with:
+          shared-key: release-windows
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: Read the version
+        run: |
+          # The same rule as the awk in the macOS job: exactly the section [workspace.package],
+          # because any other version line would be the wrong version.
+          $inside = $false
+          $version = $null
+          foreach ($row in Get-Content 'Cargo.toml') {
+            if ($row -match '^\[workspace\.package\]') { $inside = $true; continue }
+            if ($row -match '^\[') { $inside = $false; continue }
+            if ($inside -and $row -match '^version *= *"(.+)"') { $version = $Matches[1]; break }
+          }
+          if (-not $version) { throw 'Cargo.toml has no line of the form version = "..." under [workspace.package].' }
+          "VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Build the MSI
+        env:
+          # Empty means: do not sign. No secret, no failure. The script fetches the WiX version
+          # itself (WIX_VERSION stands there; from WiX 6 the version is a legal question, see
+          # packaging/windows/elasticdms.wxs).
+          PFX_PATH: ""
+          PFX_PASSWORD: ""
+          SIGNTOOL: ""
+        run: |
+          if (-not (Test-Path 'scripts/windows-package.ps1')) {
+            throw 'scripts/windows-package.ps1 is missing; without that script no MSI arises.'
+          }
+          dotnet --version
+          Get-PSDrive -Name C | Format-Table -AutoSize
+          # Provisioning is the runner's job, not the script's: the script deliberately touches
+          # nothing outside target/, so it fails loudly when wix is absent instead of installing a
+          # global .NET tool behind a developer's back. `-Task tool` is that install, and it keeps
+          # the version in one place (WIX_VERSION in the script) rather than duplicating it here.
+          ./scripts/windows-package.ps1 -Task tool
+          if ($LASTEXITCODE -ne 0) { throw "scripts/windows-package.ps1 -Task tool ended with $LASTEXITCODE." }
+          ./scripts/windows-package.ps1
+          if ($LASTEXITCODE -ne 0) { throw "scripts/windows-package.ps1 ended with $LASTEXITCODE." }
+
+      - name: Check the MSI and mark it unsigned
+        run: |
+          $found = @(Get-ChildItem -Path 'target' -Recurse -Depth 3 -File -Filter "elasticdms-$env:VERSION*.msi" -ErrorAction SilentlyContinue)
+          if ($found.Count -ne 1) {
+            throw "Under target\ there is not exactly one elasticdms-$env:VERSION*.msi but $($found.Count)."
+          }
+          $msi = $found[0]
+          # The file table is the only reliable list of what gets installed.
+          $wi = New-Object -ComObject WindowsInstaller.Installer
+          $db = $wi.GetType().InvokeMember('OpenDatabase', 'InvokeMethod', $null, $wi, @($msi.FullName, 0))
+          $view = $db.GetType().InvokeMember('OpenView', 'InvokeMethod', $null, $db, @('SELECT `FileName` FROM `File`'))
+          $view.GetType().InvokeMember('Execute', 'InvokeMethod', $null, $view, $null)
+          $names = @()
+          while ($true) {
+            $set = $view.GetType().InvokeMember('Fetch', 'InvokeMethod', $null, $view, $null)
+            if ($null -eq $set) { break }
+            $names += $set.GetType().InvokeMember('StringData', 'GetProperty', $null, $set, @(1))
+            [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($set)
+          }
+          # An open MSI database holds a handle on the file, and PowerShell frees a COM object only
+          # when the garbage collector gets round to it. Without these four lines the rename in the
+          # same process fails with "used by another process" — against a handle of its own.
+          foreach ($com in @($view, $db, $wi)) {
+            [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($com)
+          }
+          [GC]::Collect()
+          [GC]::WaitForPendingFinalizers()
+          if ($names.Count -eq 0) { throw "The file table of $($msi.Name) is empty; this check would have read nothing." }
+          $mock = $names | Where-Object { $_ -match 'mock' }
+          if ($mock) { throw "The MSI holds the test rig edms-mock ($($mock -join ', '))." }
+          if (-not ($names | Where-Object { $_ -match 'elasticdms\.exe' })) {
+            throw "The MSI holds no elasticdms.exe; something other than the client was packed."
+          }
+          $new = $msi.FullName -replace '\.msi$', '-unsigned.msi'
+          Move-Item -LiteralPath $msi.FullName -Destination $new
+          "MSI_PATH=$new" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          @(
+            "Built: $(Split-Path -Leaf $new)",
+            '',
+            'Unsigned — a test specimen from CI. SmartScreen warns on a double click; distributable packages arise only in release.yml with WINDOWS_PFX deposited (docs/DELIVERY.md).'
+          ) | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: elasticdms-desktop-installer-windows-${{ env.VERSION }}-unsigned
+          path: ${{ env.MSI_PATH }}
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7

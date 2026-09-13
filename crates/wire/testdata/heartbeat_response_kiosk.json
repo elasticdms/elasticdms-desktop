@@ -1,0 +1,14 @@
+{
+  "serverTime": "2026-09-02T07:35:02.318Z",
+  "clockOffsetMs": -412,
+  "deviceState": "active",
+  "configEtag": "8",
+  "sheetCounterReconciliation": {
+    "expectedDelta": 312,
+    "reportedDelta": 312,
+    "verdict": "MATCH"
+  },
+  "attestationVerdict": "attested",
+  "commands": [],
+  "nextHeartbeatSeconds": 300
+}

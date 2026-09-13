@@ -1,0 +1,27 @@
+# edms-wire — the body shapes on the wire, and nothing else.
+#
+# Client (edms-net) and mock (edms-mock) share these types; the truth, however, are the golden
+# files in testdata/, not the types: „Ein Test, der den Rumpf nachbaut, driftet mit dem
+# Gegenueber auseinander — und beide Seiten bleiben gruen." (geraete-auth §9.1) — a test that
+# rebuilds the body drifts apart from the counterpart, and both sides stay green.
+
+[package]
+name = "edms-wire"
+description = "Wire types of the folder client contract (03 §6 and proposal §7) with golden files"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+edms-core.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+# RFC 9530 (Repr-Digest, Content-Digest) carries the hash as base64 with padding; the same crate
+# as in edms-crypto and edms-net, no second encoding in the workspace.
+base64.workspace = true
+
+[lints]
+workspace = true

@@ -1,0 +1,262 @@
+# de.toml — jeder Satz, den der Nutzer auf Deutsch liest.
+#
+# Dies ist die gewachsene Fassung: die Sätze standen vor der Umstellung im Code und stehen hier
+# unverändert. Die Schlüssel sind englische Pfade (Regel des Eigentümers, 2026-09-12: "Jeder
+# programmiert in Englisch und auch IDs"), der Text ist deutsch — genau diese Trennung ist der
+# Zweck des Katalogs.
+#
+# Platzhalter heißen beim Namen ({account}, {count}); tests/catalogs.rs prüft, dass jede Sprache
+# für denselben Schlüssel dieselben Platzhalter verwendet. Ein Schlüssel zu viel oder zu wenig
+# ist ein roter Test, keine Überraschung im Fenster.
+
+# Das Sprachkennzeichen für Intl im Fenster (Datums- und Zahlenformate).
+locale.tag = "de-DE"
+
+# ── Das Menü am Symbol ───────────────────────────────────────────────────────────────────────
+[menu]
+open = "elasticdms öffnen"
+folder.explorer = "Ordner im Explorer öffnen"
+folder.finder = "Ordner im Finder öffnen"
+folder.plain = "Ordner öffnen"
+baskets = "Briefkörbe öffnen"
+sign_in = "Anmelden …"
+sign_out = "Abmelden"
+signing_in = "Anmeldung läuft …"
+quit = "Beenden"
+tooltip = "elasticdms – {status}"
+
+# ── Der Zustand, im Menü und im Fenster ──────────────────────────────────────────────────────
+[status]
+signed_in = "Angemeldet"
+signed_in_as = "Angemeldet als {account}"
+not_signed_in = "Nicht angemeldet"
+login_required = "Anmeldung erforderlich"
+offline = "Offline"
+awaiting_approval = "Gerät wartet auf Freigabe"
+security_warning = "Sicherheitswarnung – bitte die IT informieren"
+signing_in = "Anmeldung läuft – Code {code}"
+with_hint = "{state} – {hint}"
+
+# ── Die Zeilenarten des Nutzungsprotokolls ───────────────────────────────────────────────────
+[log]
+opened = "Geöffnet"
+open_failed = "Öffnen fehlgeschlagen"
+new_version = "Neue Fassung erhalten"
+space_reclaimed = "Speicher freigegeben"
+access_revoked = "Zugriff entzogen"
+erased_by_order = "Auf Anordnung entfernt"
+ingest_accepted = "In den Posteingang übernommen"
+ingest_failed = "Übernahme fehlgeschlagen"
+device_registered = "Gerät registriert"
+signed_in = "Angemeldet"
+signed_out = "Abgemeldet"
+login_required = "Anmeldung erforderlich"
+connection_lost = "Verbindung unterbrochen"
+connection_restored = "Verbindung wiederhergestellt"
+security_warning = "Sicherheitswarnung"
+redacted = "Dokument auf Anordnung entfernt"
+
+# ── Ein ausgeführter Zustellbefehl ───────────────────────────────────────────────────────────
+[command]
+dehydrate = "Kopien freigegeben"
+reconcile = "Abgleich angestoßen"
+sign_out = "Abmeldung angeordnet"
+refresh_keys = "Serverschlüssel abgeglichen"
+
+# ── Das Fenster ──────────────────────────────────────────────────────────────────────────────
+[window]
+loading = "Wird geladen …"
+title_with_account = "elasticdms – {account}"
+button.sign_in = "Anmelden …"
+button.folder = "Ordner öffnen"
+button.baskets = "Briefkörbe"
+login.title = "Gerät anmelden"
+login.text = "Öffnen Sie die Anmeldeseite und geben Sie diesen Code ein. Prüfen Sie dabei, dass die Seite dasselbe Kennzeichen zeigt wie hier."
+login.address = "Adresse"
+login.anchor = "Kennzeichen"
+login.anchor_missing = "– (der Server nennt keines)"
+login.button = "Anmeldeseite öffnen"
+list.title = "Zuletzt auf diesem Gerät"
+list.local_note = "Lokale Ansicht – das maßgebliche Zugriffsprotokoll führt der Server."
+list.empty = "Auf diesem Gerät ist noch nichts geschehen. Sobald Sie eine Datei öffnen, steht sie hier."
+list.load_older = "Ältere laden"
+list.redacted_title = "Der Name wurde entfernt, weil das Dokument auf Anordnung gelöscht wurde."
+folder_missing = "Der Ordner ist auf diesem Gerät noch nicht eingerichtet."
+baskets_missing = "Die Briefkörbe stehen auf diesem Gerät noch nicht im Ordner."
+
+# ── Der Spiegel: was im Explorer und im Finder steht ─────────────────────────────────────────
+#
+# Auch die Dateinamen der Hinweise stehen hier: auf Englisch heißt die Datei README.txt, auf
+# Deutsch LIESMICH.txt. Wer eine Ansicht in seiner Sprache bekommt, bekommt sie ganz.
+[mirror]
+baskets = "Briefkörbe"
+archives = "Archive"
+searches = "Gespeicherte Suchen"
+readme.name = "LIESMICH.txt"
+readme.body = """
+elasticdms – Ordneransicht
+
+Dieser Ordner zeigt Ihre Briefkörbe, Ihre Archive mit deren Akten und Ihre
+gespeicherten Suchen aus elasticdms. Er ist eine Ansicht, keine Ablage: Sie
+können hier nichts speichern, ändern, umbenennen oder löschen. Dateien werden
+erst beim Öffnen geladen; jedes Öffnen wird als Zugriff protokolliert.
+
+„Immer auf diesem Gerät behalten“ ist KEINE Zusicherung.
+Wird ein Dokument gelöscht oder Ihnen der Zugriff entzogen, entfernt elasticdms
+die Kopie auch dann von diesem Gerät, wenn Sie sie angeheftet haben.
+
+Neue Dokumente legen Sie in einen der Ordner unter „Briefkörbe“. Das ist hier
+die einzige Stelle, an der Sie eine Datei ablegen dürfen. Die Erfassung öffnet
+sich dann im Browser; wohin das Dokument abgelegt wird, entscheidet der
+Briefkorb, nicht dieser Ordner.
+"""
+truncated.name = "Trefferliste gekappt – LIESMICH.txt"
+truncated.body = """
+Diese gespeicherte Suche hat mehr Treffer, als der Ordner zeigen kann.
+Angezeigt werden die {count} neuesten Dokumente.
+
+Verfeinern Sie die Suche im Browser, damit alle Treffer erscheinen.
+"""
+
+# ── Sätze, die Motor und App dem Nutzer sagen ────────────────────────────────────────────────
+[notice]
+signing_out = "Wird abgemeldet …"
+stopping = "elasticdms wird beendet."
+awaiting_approval = "Das Gerät wartet auf die Freigabe durch die IT. Vergleichen Sie diesen Fingerabdruck mit der Verfahrensdokumentation: {fingerprint}"
+enrollment_code_missing = "Dieses Gerät ist noch nicht eingerichtet; es fehlt der Enrollment-Code aus der elasticdms-Konsole (EDMS_ENROLLMENT_CODE)."
+session_ended = "Die Sitzung ist zu Ende; bitte neu anmelden."
+device_code_expired = "Der Gerätecode ist abgelaufen; bitte die Anmeldung erneut starten."
+login_rejected = "Die Anmeldung wurde abgelehnt."
+step_up_required = "Für diesen Vorgang ist eine frischere Anmeldung nötig."
+server_refused = "Der Server hat den Vorgang abgelehnt."
+signed_in_as = "als {account}"
+device_registered = "Gerät {device} registriert."
+device_registered_again = "Gerät {device} registriert (war bereits eingerichtet)."
+basket_progress.one = "Eine Datei aus einem Briefkorb wird übernommen."
+basket_progress.many = "{count} Dateien aus den Briefkörben werden übernommen."
+erased_by_order.one = "Auf Anordnung wurde von diesem Gerät entfernt: 1 Dokument."
+erased_by_order.many = "Auf Anordnung wurde von diesem Gerät entfernt: {count} Dokumente."
+access_revoked.one = "Der Zugriff wurde entzogen: 1 Dokument."
+access_revoked.many = "Der Zugriff wurde entzogen: {count} Dokumente."
+space_reclaimed.one = "Lokale Kopien wurden freigegeben: 1 Dokument."
+space_reclaimed.many = "Lokale Kopien wurden freigegeben: {count} Dokumente."
+no_folder_on_this_platform = "Den elasticdms-Ordner gibt es für Windows und macOS; auf diesem Betriebssystem erscheint er nicht. Anmeldung, Nutzungsprotokoll und „elasticdms doctor“ laufen trotzdem."
+no_folder_without_bundle = "Der elasticdms-Ordner erscheint erst, wenn elasticdms als App-Bündel läuft: die Dateianbieter-Erweiterung steckt darin (make bundle). Anmeldung, Nutzungsprotokoll und „elasticdms doctor“ laufen auch ohne Bündel."
+mirror_path_not_unicode = "Der Ordnerpfad „{path}“ ist kein gültiger Unicode-Text; die Cloud Filter API nimmt nur solche Pfade an. Setzen Sie EDMS_MIRROR_PATH auf einen anderen Ort."
+delivery_signature = "Ein Zustellbefehl wurde nicht ausgeführt: seine Signatur hält nicht ({reason})."
+key_set_unreadable = "Der Schlüsselsatz ist nicht lesbar: {reason}"
+server_keys_rejected = "Beim Abgleich der Serverschlüssel verworfen: {reason}"
+
+# ── Was die App ablehnt, und warum ───────────────────────────────────────────────────────────
+[error]
+folder_not_provisioned = "Der elasticdms-Ordner ist auf diesem Gerät nicht eingerichtet."
+baskets_not_provisioned = "Die Briefkörbe stehen auf diesem Gerät nicht im Ordner."
+open_failed = "„{target}“ ließ sich nicht öffnen: {reason}"
+log_unreadable = "Das Nutzungsprotokoll ließ sich nicht lesen: {reason}"
+login_address = "Die Anmeldeadresse „{address}“ wird nicht geöffnet: erlaubt ist nur https:// (http:// nur für 127.0.0.1 und localhost)."
+already_signed_in = "Sie sind bereits angemeldet."
+sign_in_running = "Eine Anmeldung läuft bereits; der Code steht im Fenster."
+nobody_signed_in = "Es ist niemand angemeldet."
+awaiting_approval_sign_in = "Dieses Gerät wartet noch auf die Freigabe durch die IT; vorher ist keine Anmeldung möglich. Fingerabdruck zum Abgleich: {fingerprint}"
+offline_sign_in = "Der elasticdms-Server ist nicht erreichbar; anmelden können Sie sich, sobald die Verbindung wieder steht."
+sign_out_not_started = "Das Abmelden ließ sich nicht starten: {reason}"
+no_sign_in_running = "Es läuft gerade keine Anmeldung."
+row_number = "Die Zeilennummer {number} passt nicht in die Ansicht."
+folder_not_available = "Der elasticdms-Ordner steht auf diesem Gerät nicht zur Verfügung: {reason}"
+folder_channel = "Die Verbindung zur Ordner-Erweiterung ließ sich nicht einrichten: {reason}"
+folder_secret = "Das Geheimnis für die Ordner-Leitung ließ sich nicht erzeugen: {reason}"
+
+# ── Was der Motor ablehnt, und warum ─────────────────────────────────────────────────────────
+#
+# {reason} trägt jeweils die technische Begründung, und die bleibt englisch: was ein Serverurteil
+# ist, bleibt ein Serverurteil, und eine übersetzte Diagnose wäre im Fehlerbericht nicht mehr
+# wiederzufinden.
+[error.engine]
+configuration = "Die Einrichtung dieses Arbeitsplatzes ist unvollständig: {reason}"
+vault = "Der Schlüsselbund des Betriebssystems ließ sich nicht verwenden: {reason}"
+store = "Der lokale Zustand ließ sich nicht lesen oder schreiben: {reason}"
+crypto = "Eine kryptografische Prüfung ist fehlgeschlagen: {reason}"
+directory = "„{path}“ ließ sich nicht einrichten: {reason}"
+runtime = "elasticdms konnte seine Laufzeit nicht starten: {reason}"
+stopped = "elasticdms wird beendet."
+not_signed_in = "Es ist niemand angemeldet."
+enrollment_code_missing = "Dieses Gerät ist noch nicht eingerichtet; es fehlt der Enrollment-Code aus der elasticdms-Konsole."
+refused = "Der Server lehnt ab: {reason}"
+session_expired = "Die Sitzung ist abgelaufen: {reason}"
+no_network = "Der elasticdms-Server ist nicht erreichbar: {reason}"
+security = "Sicherheitsabbruch: {reason}"
+no_file_system = "Der Ordner ist auf diesem Gerät noch nicht eingerichtet."
+internal = "Interner Fehler im Ordnerclient: {reason}"
+
+# ── Was Explorer und Finder zeigen, wenn die Quelle nicht liefern kann ───────────────────────
+[error.source]
+not_signed_in = "Anmeldung erforderlich — elasticdms ist auf diesem Gerät nicht angemeldet."
+no_network = "Der elasticdms-Server ist nicht erreichbar."
+not_found = "Den Eintrag „{entry}“ gibt es nicht mehr."
+no_access = "Kein Zugriff auf dieses Dokument."
+integrity = "Der geladene Inhalt stimmt nicht mit der Prüfsumme überein (erwartet {expected}, erhalten {actual}); die Datei wurde nicht übernommen."
+incomplete = "Der Server lieferte {actual} statt {expected} Bytes; die Datei wurde nicht übernommen."
+anchor_expired = "Der Änderungsstand ist veraltet; der Ordner wird neu aufgezählt."
+cancelled = "Die Anfrage wurde abgebrochen."
+sink = "Der geladene Inhalt ließ sich nicht ablegen: {reason}"
+server = "Der Server meldet: {reason}"
+internal = "Interner Fehler im Ordnerclient: {reason}"
+
+# ── Was die Plattformschicht nicht ausführen konnte ──────────────────────────────────────────
+[error.platform]
+not_ready = "Der Ordner ist auf diesem Gerät nicht eingerichtet."
+not_found = "Der Eintrag „{entry}“ liegt nicht auf diesem Gerät."
+in_use = "Die Datei „{entry}“ ist gerade geöffnet; der Vorgang wird wiederholt."
+operating_system = "Das Betriebssystem meldet {code}: {text}"
+not_supported = "Auf diesem Betriebssystem nicht möglich: {what}"
+
+# ── Die macOS-Erweiterung ────────────────────────────────────────────────────────────────────
+[error.provider]
+app_not_reachable = "Die elasticdms-App ist nicht erreichbar ({reason}). Bitte starten Sie elasticdms."
+foreign_identifier = "Die Kennung „{identifier}“ stammt nicht von elasticdms."
+no_trash = "Dieser Ordner ist schreibgeschützt und hat keinen Papierkorb."
+no_file = "„{entry}“ ist ein Ordner und hat keinen Inhalt zum Laden."
+read_only = "Dieser Ordner ist schreibgeschützt; Änderungen werden nicht an elasticdms übertragen."
+delete_rejected = "Dieser Ordner ist schreibgeschützt; die Datei wird wiederhergestellt."
+page_expired = "Die Liste hat sich während der Aufzählung geändert; sie beginnt von vorn."
+staging = "macOS stellt keinen Zwischenordner für geladene Dateien bereit: {reason}"
+file = "Die geladene Datei konnte nicht zwischengespeichert werden: {reason}"
+cancelled = "Die Anfrage wurde abgebrochen."
+
+# ── Die Beispieldaten von `--demo` ───────────────────────────────────────────────────────────
+#
+# Auch der Demobestand ist Nutzertext: wer die Oberfläche auf Englisch zeigt, will kein halb
+# deutsches Protokoll sehen. Die Dokumentnamen bleiben, wie sie sind — sie sind Archivinhalt.
+[demo]
+account = "Erika Mustermann"
+basket = "Briefkörbe › Buchhaltung"
+case.sulzer = "Archive › Kunden › Sulzer Pumpen – Wartungsvertrag 2026"
+case.engineering = "Archive › Technik › Technische Dokumentation"
+case.safety = "Archive › Verwaltung › Arbeitssicherheit"
+case.northport = "Archive › Projekte › Projekt Nordhafen"
+case.purchasing = "Archive › Verwaltung › Einkauf"
+case.personnel = "Archive › Verwaltung › Personal"
+case.quality = "Archive › Technik › Qualitätsmanagement"
+case.fleet = "Archive › Verwaltung › Fuhrpark"
+search.invoices = "Gespeicherte Suchen › Offene Rechnungen über 10.000 €"
+search.offers = "Gespeicherte Suchen › Offene Angebote"
+search.receipts = "Gespeicherte Suchen › Meine Belege"
+loaded = "Geladen und geprüft."
+loaded_2_4 = "Geladen und geprüft · 2,4 MB."
+loaded_1_1 = "Geladen und geprüft · 1,1 MB."
+loaded_480 = "Geladen und geprüft · 480 KB."
+ingest_with_browser = "In den Posteingang übernommen; die Erfassung wurde im Browser geöffnet."
+ingest_plain = "In den Posteingang übernommen."
+new_version = "Auf dem Server liegt eine neue Fassung. Die lokale Kopie wurde verworfen und wird beim nächsten Öffnen neu geladen."
+connection_restored = "Der Server ist wieder erreichbar."
+connection_lost = "Der elasticdms-Server ist nicht erreichbar. Bereits geladene Dateien bleiben lesbar."
+space_reclaimed_stale = "Seit 30 Tagen nicht geöffnet; die lokale Kopie wurde freigegeben. Der Eintrag bleibt, beim nächsten Öffnen wird neu geladen."
+space_reclaimed_asked = "Speicher auf Wunsch freigegeben."
+no_access = "Kein Zugriff auf dieses Dokument."
+access_revoked = "Die Berechtigung wurde entzogen; die lokale Kopie ist entfernt."
+security_warning = "Ein Zustellbefehl trug keine gültige Signatur und wurde nicht ausgeführt."
+ingest_failed = "Der Server war nicht erreichbar. Die Datei bleibt im Briefkorb und wird erneut übernommen."
+session_expired = "Die Sitzung ist abgelaufen. Bereits geladene Dateien bleiben lesbar; neue öffnen sich erst nach der Anmeldung."
+device_approved = "Dieses Gerät wurde registriert und von der IT freigegeben."
+sign_in_not_started = "Die Demo-Anmeldung ließ sich nicht starten: {reason}"
+mirror_cleared = "Der Ordner wurde geräumt; auf diesem Gerät steht kein Dokumentname mehr."

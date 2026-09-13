@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<!--
+  de-DE.wxl — jeder Satz, den der Administrator und der Nutzer am Installationspaket auf Deutsch
+  lesen. Das Gegenstück zu crates/i18n/catalog/de.toml, für die vier Stellen, die nicht der Client
+  zeigt, sondern der Windows Installer.
+
+  Die Schlüssel sind englisch (Regel des Eigentümers, 2026-09-12), der Text ist deutsch — genau
+  diese Trennung ist der Zweck der Datei. Ein Schlüssel, den nur eine der beiden Dateien kennt,
+  ist ein Fehler WIX0102 beim Bauen und keine Überraschung beim Kunden: `wix build` löst
+  !(loc.…) auf, bevor es die Datenbank schreibt.
+
+  PackageLanguage ist kein Satz, sondern die Sprachkennung (LCID) dieses Katalogs. Sie steht hier
+  und nicht im Bauskript, damit eine Sprache aus genau einer Datei besteht: Kultur, Codepage,
+  Kennung und Text. scripts\windows-package.ps1 liest sie von hier.
+
+  Das Paket selbst ist deutsch; Englisch kommt als Transformation daneben. Warum das so und nicht
+  als zweite MSI entschieden wurde, steht in scripts\windows-package.ps1 bei $Cultures.
+-->
+
+<WixLocalization xmlns="http://wixtoolset.org/schemas/v4/wxl" Culture="de-DE" Codepage="1252">
+
+  <String Id="PackageLanguage" Value="1031" />
+
+  <!-- Steht im Explorer unter „Programme und Features“ in der Spalte Kommentar. -->
+  <String Id="ProductComments"
+          Value="Lesender Spiegel des elasticdms-Archivs: Akten und gespeicherte Suchen im Explorer." />
+
+  <!-- Der Name der einen Funktion; ohne „Ändern“-Schaltfläche sieht ihn nur ein Protokoll. -->
+  <String Id="FeatureTitle" Value="elasticdms Ordnerclient" />
+
+  <String Id="DowngradeBlocked"
+          Value="Eine neuere Fassung von elasticdms ist bereits installiert. Die Installation wird abgebrochen." />
+
+  <String Id="NeedsSixtyFourBitWindows"
+          Value="elasticdms gibt es nur für 64-Bit-Windows; auf diesem Rechner läuft eine 32-Bit-Fassung." />
+
+</WixLocalization>

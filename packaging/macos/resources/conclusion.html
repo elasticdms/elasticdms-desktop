@@ -1,0 +1,50 @@
+<!--
+  Der Abschlusstext des Installers (Distribution: <conclusion file="conclusion.html"/>).
+
+  DER GRUND: Nach der Installation fehlt genau ein Handgriff, den kein Installer und kein Skript
+  abnehmen kann — der Nutzer muss die Dateianbieter-Erweiterung einmal einschalten (ADR-D05,
+  Messung 4). Bis dahin bleibt der Ordner leer und jeder Zugriff hängt, ohne dass irgendwo ein
+  Fehler erschiene. Diese Seite ist der einzige Ort, an dem der Satz den Nutzer sicher erreicht:
+  er steht vor ihm, wenn die Installation fertig ist.
+
+  Benutzertext, also echte Umlaute. Kein externes Bild, kein Skript — der Installer zeigt die
+  Seite in einer eingebetteten Ansicht ohne Netz.
+-->
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  body { font: 13px -apple-system, "Helvetica Neue", sans-serif; margin: 0; color: #1d1d1f; }
+  h1 { font-size: 15px; margin: 0 0 10px; }
+  ol { margin: 0 0 14px 18px; padding: 0; }
+  li { margin-bottom: 7px; }
+  p { margin: 0 0 10px; }
+  .weg { background: #f2f2f7; border-radius: 5px; padding: 7px 9px; margin: 6px 0; }
+  .leise { color: #6e6e73; }
+</style>
+</head>
+<body>
+
+<h1>Noch ein Handgriff — sonst bleibt der Ordner leer</h1>
+
+<p>elasticdms liegt jetzt in <b>/Applications</b> und startet ab der nächsten Anmeldung von
+selbst. Der Ordner erscheint aber erst, wenn Sie die Erweiterung einmal freigeben:</p>
+
+<ol>
+  <li>Menüleiste: das Symbol <b>elasticdms</b> anklicken und anmelden.</li>
+  <li>Systemeinstellungen öffnen:
+    <div class="route"><b>Allgemein → Anmeldeobjekte und Erweiterungen → Dateianbieter</b></div>
+    Dort den Schalter bei <b>elasticdms</b> einschalten.</li>
+  <li>Der Ordner erscheint im Finder in der Seitenleiste unter <b>Speicherorte</b>.</li>
+</ol>
+
+<p>Der Ordner ist <b>nur lesbar</b>: Dateien darin lassen sich öffnen und kopieren, aber nicht
+ändern, umbenennen oder löschen. Was Sie sehen, ist das Archiv, nicht eine Kopie davon.</p>
+
+<p class="leise">Deinstallieren:
+<b>/Applications/elasticdms.app/Contents/Resources/elasticdms-uninstall.sh remove</b>
+im Terminal — als angemeldeter Benutzer, nicht mit sudo. Wählen Sie vorher in der Menüleiste
+<b>Abmelden</b>, damit der Ordner sauber verschwindet.</p>
+
+</body>
+</html>

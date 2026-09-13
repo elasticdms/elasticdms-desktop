@@ -1,0 +1,30 @@
+# edms-store — the local state, SQLite in WAL mode.
+#
+# SQLite, because it is the only embedded database that carries a writing and a reading process
+# at the same time (measured: redb 4.2 locks the whole file, sled knows no two instances). The
+# engine is the only writer.
+
+[package]
+name = "edms-store"
+description = "Local state of the folder client in SQLite (WAL)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+edms-core.workspace = true
+# Only for the language of the fixtures and the display names in `test_support`; the store keeps
+# values, never sentences.
+edms-i18n.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+rusqlite.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true

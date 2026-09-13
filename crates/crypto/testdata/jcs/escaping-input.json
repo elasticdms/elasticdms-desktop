@@ -1,0 +1,7 @@
+{
+  "anfuehrung": "Er sagte \"Halt\"",
+  "rueckstrich": "C:\\Pfad\\Datei",
+  "steuerzeichen": "\u0000\u0001\b\t\n\f\r\u001f",
+  "jenseits20": " \u007f\u0080\u00a0",
+  "surrogatpaar": "\ud83d\ude00"
+}

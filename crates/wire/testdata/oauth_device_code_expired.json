@@ -1,0 +1,5 @@
+{
+  "error": "invalid_grant",
+  "error_description": "Der Gerätecode ist abgelaufen.",
+  "error_uri": "https://errors.elasticdms.io/device-code-expired"
+}

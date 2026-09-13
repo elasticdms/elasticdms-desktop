@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Berechtigungen der Erweiterung elasticdms-fileprovider.appex.
+
+  Drei Eintraege, kein vierter. Jeder weitere waere eine Tuer, die niemand braucht — die
+  Erweiterung liest eine Datei und spricht mit einem Prozess auf demselben Rechner.
+
+  * com.apple.security.app-sandbox — Pflicht: ohne Sandbox nimmt PlugInKit die Erweiterung nicht
+    an (ADR-D05, Messung 2). Die App selbst ist nicht sandboxiert und bekommt deshalb gar keine
+    Berechtigungsdatei; sie muss auf 127.0.0.1 lauschen und nach ~/Library/Application Support
+    schreiben duerfen.
+  * com.apple.security.network.client — die Leitung zur App ist TCP auf 127.0.0.1 (ADR-D05).
+    Ein Unix-Socket braeuchte eine App Group, die Ad-hoc-Signaturen nicht haben. Nur ausgehend:
+    die Erweiterung lauscht nie, und zum Server spricht sie ohnehin nicht — das tut der Motor.
+  * com.apple.security.temporary-exception.files.home-relative-path.read-only — der eine Ordner
+    mit der Rendezvous-Datei (Port und Geheimnis, Modus 0600). In der Sandbox zeigt $HOME in den
+    Container der Erweiterung; der Pfad hier ist relativ zum ECHTEN Heimatverzeichnis, das
+    crates/fileprovider/src/home.rs aus der Benutzerdatenbank liest. Nur lesend, und nur
+    dieser Unterordner: mehr braucht der Handschlag nicht.
+
+  Der Preis dieser Ausnahme steht in ADR-D05: mit ihr ist der Mac App Store ausgeschlossen.
+  Wird er je gebraucht, ersetzt eine App Group (mit Team-ID) den Rendezvous-Pfad.
+-->
+<plist version="1.0">
+<dict>
+	<key>com.apple.security.app-sandbox</key>
+	<true/>
+	<key>com.apple.security.network.client</key>
+	<true/>
+	<key>com.apple.security.temporary-exception.files.home-relative-path.read-only</key>
+	<array>
+		<string>/Library/Application Support/de.elasticdms.folderclient/</string>
+	</array>
+</dict>
+</plist>

@@ -1,0 +1,9 @@
+{
+  "type": "https://errors.elasticdms.io/token-device-binding-mismatch",
+  "title": "Token gehört zu einem anderen Gerät",
+  "status": 403,
+  "detail": "Der Token-Claim device.id (dev_01JOTHER…) stimmt nicht mit dem per DPoP nachgewiesenen Gerät (dev_01JB8Z…) überein.",
+  "instance": "/v1/folders",
+  "securityEvent": true,
+  "traceId": "01JB8Z…"
+}

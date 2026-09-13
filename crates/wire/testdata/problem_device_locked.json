@@ -1,0 +1,9 @@
+{
+  "type": "https://errors.elasticdms.io/device-revoked",
+  "title": "Gerät gesperrt",
+  "status": 403,
+  "detail": "Dieses Gerät wurde am 02.09.2026 durch T. Berg gesperrt (Grund: lost_device). Bitte wenden Sie sich an die IT unter -4711.",
+  "instance": "/v1/devices/me",
+  "revokedAt": "2026-09-02T15:02:11Z",
+  "contact": "IT-Service, Durchwahl 4711"
+}

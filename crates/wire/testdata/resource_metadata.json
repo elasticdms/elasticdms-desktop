@@ -1,0 +1,16 @@
+{
+  "resource": "https://api.elasticdms.io",
+  "authorization_servers": [
+    "https://auth.elasticdms.io"
+  ],
+  "bearer_methods_supported": [
+    "dpop"
+  ],
+  "scopes_supported": [
+    "device:self",
+    "folders:read",
+    "documents:read",
+    "ingest:submit",
+    "delivery:receive"
+  ]
+}

@@ -1,0 +1,20 @@
+# architecture-rules — the house rules as a build failure, not as a comment.
+#
+# Like build-regeln in the sister repository elasticdms-escan: every rule with an identifier, a
+# pattern, an allow list and a sentence of rationale; comments and string literals are stripped
+# before the check; and a lower bound on the number of files read, because "a check that reads
+# nothing is green and worthless".
+
+[package]
+name = "architecture-rules"
+description = "Architecture rules of the folder client as a test"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+
+[lints]
+workspace = true

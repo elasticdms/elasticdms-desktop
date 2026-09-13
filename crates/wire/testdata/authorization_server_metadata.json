@@ -1,0 +1,40 @@
+{
+  "issuer": "https://auth.elasticdms.io",
+  "token_endpoint": "https://auth.elasticdms.io/v1/oauth/token",
+  "device_authorization_endpoint": "https://auth.elasticdms.io/v1/oauth/device_authorization",
+  "revocation_endpoint": "https://auth.elasticdms.io/v1/oauth/revoke",
+  "jwks_uri": "https://auth.elasticdms.io/.well-known/jwks.json",
+  "grant_types_supported": [
+    "client_credentials",
+    "urn:ietf:params:oauth:grant-type:device_code",
+    "refresh_token"
+  ],
+  "token_endpoint_auth_methods_supported": [
+    "private_key_jwt"
+  ],
+  "token_endpoint_auth_signing_alg_values_supported": [
+    "ES256"
+  ],
+  "dpop_signing_alg_values_supported": [
+    "ES256"
+  ],
+  "code_challenge_methods_supported": [
+    "S256"
+  ],
+  "scopes_supported": [
+    "device:self",
+    "kiosk:login",
+    "audit:anchor",
+    "batch:transport",
+    "openid",
+    "profile",
+    "folders:read",
+    "scan:operate",
+    "scan:review",
+    "approvals:decide",
+    "destruction:acknowledge",
+    "documents:read",
+    "documents:retract"
+  ],
+  "authorization_response_iss_parameter_supported": true
+}

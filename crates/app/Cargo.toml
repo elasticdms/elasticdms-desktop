@@ -1,0 +1,64 @@
+# elasticdms — the app: an icon in the taskbar or menu bar, a window with the usage log, and the
+# ONE place where the crates know each other (the wiring).
+#
+# Here every thread comes together: the engine (session, reconciliation, hydration), the store
+# (only for the setup — reading goes through the engine), crypto (randomness for the bridge
+# secret), net (connection and server access) and the platform layer of the respective target
+# platform. The direction stays one-way: no other crate knows this one.
+
+[package]
+name = "elasticdms"
+description = "elasticdms folder client: tray icon, usage log, wiring"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "elasticdms"
+path = "src/main.rs"
+
+[dependencies]
+edms-core.workspace = true
+# Every sentence the user reads. The app is the only crate that knows both the text catalogue and
+# the platform layer, and therefore the only one that can resolve the operating system's locale
+# (src/locale.rs) and hand the answer down to engine and core.
+edms-i18n.workspace = true
+edms-engine.workspace = true
+edms-store.workspace = true
+edms-crypto.workspace = true
+edms-net.workspace = true
+edms-bridge.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+tao.workspace = true
+wry.workspace = true
+tray-icon.workspace = true
+directories.workspace = true
+open.workspace = true
+# Only the channels: the engine publishes its state over `watch` and its events over `broadcast`,
+# and the app listens on a thread of its own (`blocking_recv`). No runtime — that belongs to the
+# engine (`edms_engine::engine`, "the runtime belongs to the engine").
+tokio = { workspace = true, features = ["sync"] }
+# The operating system's keychain (macOS Keychain, Windows Credential Manager). The version stands
+# here and not in the workspace, because exactly one crate pulls it: the app is the only process
+# with a user identity that a keychain hangs off (ADR-D03, point 4). Default feature "v1":
+# apple-native-keyring-store on macOS, windows-native-keyring-store on Windows — not a crate choice
+# of our own but the keyring crate's.
+keyring = "4.2"
+
+[target.'cfg(windows)'.dependencies]
+edms-cfapi.workspace = true
+
+[target.'cfg(target_os = "macos")'.dependencies]
+edms-fileprovider.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true

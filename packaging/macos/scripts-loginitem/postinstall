@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+#
+# postinstall des Bestandteils de.elasticdms.folderclient.loginitem.
+#
+# DER GRUND: Eine frisch abgelegte Plist in /Library/LaunchAgents laedt launchd erst bei der
+# naechsten Anmeldung. Ohne diesen Handgriff passierte nach der Installation sichtbar nichts, und
+# der Nutzer schloesse daraus, das Paket habe nicht gewirkt. `bootstrap` in die laufende
+# GUI-Sitzung startet das Programm sofort — RunAtLoad steht in der Plist.
+#
+# Der Installer ruft dieses Skript als root auf. Es darf unter keinen Umstaenden fehlschlagen:
+# jeder Exitcode ungleich 0 bricht die ganze Installation ab und liesse ein halb installiertes
+# Geraet zurueck. Deshalb endet es fest mit `exit 0`.
+#
+# Ohne EDMS_API_BASE, EDMS_AUTH_BASE und EDMS_APP_BASE beendet sich elasticdms gleich wieder
+# mit einem Satz, der die fehlende Variable nennt (crates/app/src/setup.rs). Das ist kein
+# Fehler dieses Skripts, sondern die offene Konfiguration; siehe packaging/macos/README.md.
+
+set -uo pipefail
+
+LABEL="de.elasticdms.folderclient"
+PLIST="/Library/LaunchAgents/de.elasticdms.folderclient.plist"
+
+[ -f "$PLIST" ] || exit 0
+
+# Das Anmeldeobjekt gehoert der GUI-Sitzung des angemeldeten Nutzers, nicht root. Bei einem
+# unbeaufsichtigten Ausrollen ohne angemeldeten Nutzer gibt es keine solche Sitzung — dann wirkt
+# die Plist ohne weiteres Zutun bei der naechsten Anmeldung, und hier ist nichts zu tun.
+USER="$(/usr/bin/stat -f %Su /dev/console 2>/dev/null || true)"
+if [ -z "$USER" ] || [ "$USER" = "root" ] || [ "$USER" = "loginwindow" ]; then
+	exit 0
+fi
+USER_ID="$(/usr/bin/id -u "$USER" 2>/dev/null || true)"
+[ -n "$USER_ID" ] || exit 0
+
+# Erst entladen, dann laden: ein `bootstrap` auf eine bereits geladene Aufgabe scheitert mit
+# „service already bootstrapped" und liesse die alte Fassung laufen.
+/bin/launchctl bootout "gui/$USER_ID/$LABEL" 2>/dev/null || true
+/bin/launchctl bootstrap "gui/$USER_ID" "$PLIST" 2>/dev/null || true
+
+exit 0

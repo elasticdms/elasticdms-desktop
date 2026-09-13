@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Die Distribution-Beschreibung des Produktarchivs elasticdms-<Fassung>.pkg.
+
+  Sie steht im Repo und wird nicht erzeugt, denn hier stehen Entscheidungen, keine Messwerte.
+  Der Schalter „synthesize“ von productbuild liefert nur das Geruest; ergaenzt sind
+  volume-check, die Architekturen und der Abschlusstext. @VERSION@ setzt scripts/macos-package.sh aus
+  [workspace.package].version — die Fassung hat ihre einzige Wahrheit in Cargo.toml, und der
+  Installer entscheidet Aktualisierung gegen Ruecksetzung allein an dieser Zahl.
+
+  * options customize="never" — es gibt nichts zu waehlen. Beide Bestandteile gehoeren zusammen:
+    ohne das Programm zeigt das Anmeldeobjekt ins Leere, ohne das Anmeldeobjekt startet nach der
+    Anmeldung nichts.
+  * options hostArchitectures="arm64,x86_64" — das Paket traegt Universalprogramme. Ohne diese
+    Angabe lehnt der Installer auf Intel-Macs ab, wenn er das Produkt fuer arm64-only haelt.
+  * options require-scripts="true" — die beiden Skripte (preinstall, postinstall) sind Teil der
+    Installation, nicht Beiwerk: das eine entlaedt die alte Fassung, das andere startet die neue.
+  * volume-check/allowed-os-versions min 13.0 — dieselbe Grenze wie LSMinimumSystemVersion und
+    MACOSX_DEPLOYMENT_TARGET (ADR-D05: NSFileProviderItem.contentPolicy gibt es ab macOS 13).
+    Ohne sie liefe die Installation auf macOS 12 durch und die App startete nie.
+  * Zwei pkg-refs, weil es zwei Ziele gibt: /Applications fuer das Buendel und / fuer die Plist
+    in /Library/LaunchAgents. Die Reihenfolge in choices-outline ist die Reihenfolge der
+    Installation — erst das Programm, dann das Anmeldeobjekt, das es startet.
+  * onConclusion="none" — kein Neustart, keine Abmeldung. Das Anmeldeobjekt wird vom postinstall
+    in die laufende Sitzung geladen.
+-->
+<installer-gui-script minSpecVersion="2">
+    <title>elasticdms Ordnerclient</title>
+    <organization>de.elasticdms</organization>
+    <options customize="never" require-scripts="true" hostArchitectures="arm64,x86_64"/>
+    <conclusion file="conclusion.html" mime-type="text/html"/>
+    <volume-check>
+        <allowed-os-versions>
+            <os-version min="13.0"/>
+        </allowed-os-versions>
+    </volume-check>
+    <choices-outline>
+        <line choice="de.elasticdms.folderclient.app"/>
+        <line choice="de.elasticdms.folderclient.loginitem"/>
+    </choices-outline>
+    <choice id="de.elasticdms.folderclient.app" visible="false">
+        <pkg-ref id="de.elasticdms.folderclient.app"/>
+    </choice>
+    <choice id="de.elasticdms.folderclient.loginitem" visible="false">
+        <pkg-ref id="de.elasticdms.folderclient.loginitem"/>
+    </choice>
+    <pkg-ref id="de.elasticdms.folderclient.app" version="@VERSION@" onConclusion="none">elasticdms-app.pkg</pkg-ref>
+    <pkg-ref id="de.elasticdms.folderclient.loginitem" version="@VERSION@" onConclusion="none">elasticdms-loginitem.pkg</pkg-ref>
+</installer-gui-script>

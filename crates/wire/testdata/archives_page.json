@@ -1,0 +1,14 @@
+{
+  "items": [
+    {
+      "archiveId": "arc_01JKA9P4S6T8V0W2X4Y6Z8A1B3",
+      "title": "Rechnungseingang"
+    },
+    {
+      "archiveId": "arc_01JKB1Q5T7V9W1X3Y5Z7A9B2C4",
+      "title": "Bauvorhaben"
+    }
+  ],
+  "nextCursor": null,
+  "hasMore": false
+}

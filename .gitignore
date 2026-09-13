@@ -1,0 +1,12 @@
+/target
+**/*.rs.bk
+.DS_Store
+/.idea
+/.vscode
+# Secrets never belong in the directory (see README, section Configuration).
+.env
+*.pem
+*.p12
+
+# Byte code of the helper scripts (scripts/check-catalogs.py).
+__pycache__/

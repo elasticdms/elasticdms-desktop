@@ -1,0 +1,108 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<!--
+  AppxManifest.xml — Sparse-Paket für elasticdms. NICHT der Auslieferungsweg.
+
+  ═══════════════════════════════════════════════════════════════════════════════════════════
+  Diese Datei ist eine dokumentierte ALTERNATIVE, kein Bestandteil des Produkts.
+  Ausgeliefert wird unverpackt; die Synchronisationswurzel meldet `CfRegisterSyncRoot` an
+  (Win32), nicht `StorageProviderSyncRootManager.Register` (WinRT). Begründung in
+  ADR-D06 §7 und in README.md, Abschnitt „Warum unverpackt".
+
+  Wozu sie dann hier steht: Falls sich auf einem echten Windows-Rechner herausstellt, dass der
+  Eintrag im Navigationsbereich des Explorers ohne Paketidentität nicht zu bekommen ist oder
+  dass die HKLM-Schlüssel ohne erhöhte Rechte nicht geschrieben werden können, ist das
+  Sparse-Paket der nächste Schritt — und dann soll niemand bei null anfangen. Ein Sparse-Paket
+  gibt einem Win32-Programm, das weiterhin ganz normal aus seinem eigenen Ordner läuft, eine
+  Paketidentität (`<uap10:AllowExternalContent>`).
+
+  AUF WINDOWS NICHT AUSGEFÜHRT. Diese Datei ist gegen die Schema-Dokumentation geschrieben und
+  auf diesem Rechner (macOS) weder von `MakeAppx.exe` geprüft noch installiert worden.
+  Erwartete Fehlerquellen beim ersten Versuch: `Publisher` muss exakt dem Antragsteller des
+  Signaturzertifikats entsprechen (Zeichen für Zeichen, samt Leerzeichen), und die vier
+  Bilddateien unter `Assets\` müssen existieren.
+  ═══════════════════════════════════════════════════════════════════════════════════════════
+-->
+
+<Package
+  xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+  xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+  xmlns:uap10="http://schemas.microsoft.com/appx/manifest/uap/windows10/10"
+  xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+  IgnorableNamespaces="uap uap10 rescap">
+
+  <!--
+    Name und Publisher sind Platzhalter. Publisher MUSS dem Antragstellernamen („Subject") des
+    Zertifikats entsprechen, mit dem das Paket signiert wird — sonst lehnt Windows die
+    Installation ab, ohne zu sagen, woran es lag. Version ist vierteilig; das dritte und vierte
+    Feld zählen den Paketbau, nicht die Fassung des Programms.
+  -->
+  <Identity
+    Name="LMPumps.elasticdms.FolderClient"
+    Publisher="CN=LM Pumps GmbH, O=LM Pumps GmbH, C=DE"
+    Version="0.1.0.0"
+    ProcessorArchitecture="x64" />
+
+  <Properties>
+    <DisplayName>elasticdms</DisplayName>
+    <PublisherDisplayName>LM Pumps GmbH</PublisherDisplayName>
+    <Logo>Assets\StoreLogo.png</Logo>
+
+    <!--
+      Das eine Element, das aus einem gewöhnlichen Paket ein Sparse-Paket macht: Die Dateien des
+      Programms liegen NICHT im Paket, sondern weiter in ihrem Installationsordner. Bei
+      `Add-AppxPackage` wird dieser Ordner mit `-ExternalLocation` genannt.
+    -->
+    <uap10:AllowExternalContent>true</uap10:AllowExternalContent>
+  </Properties>
+
+  <!--
+    MinVersion 10.0.19041.0 (Windows 10, Version 2004): Ab dieser Fassung sind Sparse-Pakete
+    unterstützt. Die Cloud Filter API selbst gibt es früher (10.0.16299, Version 1709) — der
+    unverpackte Weg läuft deshalb auch auf älteren Rechnern, dieses Paket nicht.
+  -->
+  <Dependencies>
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.19041.0" MaxVersionTested="10.0.26100.0" />
+  </Dependencies>
+
+  <Resources>
+    <Resource Language="de-DE" />
+    <Resource Language="en-US" />
+  </Resources>
+
+  <Applications>
+    <!--
+      `uap10:RuntimeBehavior="win32App"` und `uap10:TrustLevel="mediumIL"`: Das Programm läuft
+      wie bisher als gewöhnliches Win32-Programm im Sitzungskontext des angemeldeten Nutzers —
+      keine Sandbox, keine Container-Ansicht der Registrierung, kein virtualisiertes
+      Dateisystem. Das ist Bedingung, nicht Bequemlichkeit: cldflt spricht mit dem Prozess,
+      der `CfConnectSyncRoot` gerufen hat, und ein containerisierter Prozess sähe einen
+      anderen Ordner als der Explorer.
+
+      `Executable` ist relativ zum Ordner aus `-ExternalLocation`.
+    -->
+    <Application
+      Id="FolderClient"
+      Executable="elasticdms.exe"
+      uap10:RuntimeBehavior="win32App"
+      uap10:TrustLevel="mediumIL">
+      <uap:VisualElements
+        DisplayName="elasticdms"
+        Description="Lesender Spiegel des elasticdms-Archivs: Akten und gespeicherte Suchen im Explorer."
+        Square150x150Logo="Assets\Square150x150Logo.png"
+        Square44x44Logo="Assets\Square44x44Logo.png"
+        BackgroundColor="transparent">
+        <uap:DefaultTile Wide310x150Logo="Assets\Wide310x150Logo.png" />
+      </uap:VisualElements>
+    </Application>
+  </Applications>
+
+  <!--
+    `runFullTrust` ist für ein Sparse-Paket mit `RuntimeBehavior="win32App"` NICHT nötig und
+    wird deshalb nicht beantragt: Weniger beantragte Fähigkeiten, weniger Gründe für eine
+    Ablehnung. Der Ordnerclient braucht ohnehin keine besonderen Rechte — er läuft als der
+    angemeldete Nutzer und schreibt nur in dessen Profil (ADR-D02: ein Prozess je Nutzer,
+    kein Dienst).
+  -->
+
+</Package>

@@ -1,0 +1,390 @@
+/* The style of the window.
+ *
+ * Light and dark through `prefers-color-scheme` (ADR-D07: the icon adapts, and so does the
+ * window). System fonts only — the policy forbids the page to load anything, so a web font would
+ * stay invisible and the typeface would silently fall back to a substitute.
+ *
+ * No inline styles from the script: `element.style.x = …` would be forbidden by the policy
+ * ("style-src 'nonce-…'") and would silently have no effect. Everything runs through classes and
+ * `data-` attributes. */
+
+:root {
+  color-scheme: light dark;
+  --ground: #ffffff;
+  --ground-raised: #f6f7f9;
+  --ground-floating: #eceef2;
+  --line: #e0e3e8;
+  --text: #1b1d21;
+  --text-muted: #5c6069;
+  --accent: #1f5fd6;
+  --info: #6b7280;
+  --notice: #b26a00;
+  --warning: #c5221f;
+  --focus: #1f5fd6;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ground: #1c1e22;
+    --ground-raised: #24272c;
+    --ground-floating: #2d3137;
+    --line: #34383f;
+    --text: #e9eaec;
+    --text-muted: #a2a7b0;
+    --accent: #7aa7f5;
+    --info: #9aa1ac;
+    --notice: #f0b429;
+    --warning: #ff7b72;
+    --focus: #7aa7f5;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: var(--ground);
+  color: var(--text);
+  font-family:
+    -apple-system, BlinkMacSystemFont, "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  font-size: 13px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* ── Header ───────────────────────────────────────────────────────────────── */
+
+.header {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  background: var(--ground-raised);
+  border-bottom: 1px solid var(--line);
+}
+
+.account {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.account-text {
+  min-width: 0;
+}
+
+h1 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.statusLine {
+  margin: 1px 0 0;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+/* The dot in the header shows the same state as the dot on the tray icon: full = notice,
+ * ring = offline, red = security warning. Shape AND colour, so that it stays distinguishable
+ * without colour vision too. */
+.dot {
+  flex: none;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: #2e9b52;
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 12%) inset;
+}
+
+.dot[data-tone="NOTICE"] {
+  background: var(--notice);
+}
+
+.dot[data-tone="OFFLINE"] {
+  background: transparent;
+  border: 2px solid var(--info);
+  box-shadow: none;
+}
+
+.dot[data-tone="WARNING"] {
+  background: var(--warning);
+}
+
+.buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+button {
+  font: inherit;
+  color: var(--text);
+  background: var(--ground);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 5px 12px;
+  cursor: pointer;
+}
+
+button:hover:not(:disabled) {
+  background: var(--ground-floating);
+}
+
+button:disabled {
+  color: var(--text-muted);
+  cursor: default;
+  opacity: 0.65;
+}
+
+#button-sign-in,
+#button-login-page {
+  background: var(--accent);
+  border-color: transparent;
+  color: #ffffff;
+  font-weight: 600;
+}
+
+@media (prefers-color-scheme: dark) {
+  #button-sign-in,
+  #button-login-page {
+    color: #14161a;
+  }
+}
+
+/* ── Sign-in panel ────────────────────────────────────────────────────────── */
+
+.login-panel {
+  margin: 16px 18px 0;
+  padding: 14px 16px;
+  background: var(--ground-raised);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+
+.login-panel h2 {
+  margin: 0 0 4px;
+  font-size: 13px;
+}
+
+.login-panel-text {
+  margin: 0;
+  color: var(--text-muted);
+  max-width: 60ch;
+}
+
+.userCode {
+  margin: 10px 0 6px;
+  font-family: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+  font-size: 26px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  user-select: all;
+}
+
+.login-data {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 2px 12px;
+  margin: 0 0 12px;
+  color: var(--text-muted);
+}
+
+.login-data dt {
+  font-weight: 600;
+}
+
+.login-data dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+/* ── List ─────────────────────────────────────────────────────────────────── */
+
+main {
+  padding: 16px 18px 24px;
+}
+
+.heading h2 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.local-note {
+  margin: 2px 0 12px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.row + .row {
+  border-top: 1px solid var(--line);
+}
+
+.row summary {
+  list-style: none;
+  cursor: pointer;
+}
+
+.row summary::-webkit-details-marker {
+  display: none;
+}
+
+.line {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) max-content;
+  gap: 10px;
+  align-items: start;
+  padding: 9px 12px;
+}
+
+.row summary:hover .line,
+.row details[open] .line {
+  background: var(--ground-raised);
+}
+
+.glyph {
+  width: 20px;
+  height: 20px;
+  margin-top: 1px;
+  color: var(--info);
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.severity-notice .glyph {
+  color: var(--notice);
+}
+
+.severity-warning .glyph {
+  color: var(--warning);
+}
+
+.text {
+  min-width: 0;
+}
+
+.label {
+  font-weight: 600;
+}
+
+.severity-warning .label {
+  color: var(--warning);
+}
+
+.name {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.name.redacted {
+  font-style: italic;
+  color: var(--text-muted);
+}
+
+.location {
+  display: block;
+  color: var(--text-muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.time {
+  color: var(--text-muted);
+  font-size: 12px;
+  white-space: nowrap;
+  text-align: right;
+}
+
+/* On expandable rows the arrow sits in front of the time; flat rows leave the column empty, so
+ * that the times of all rows line up. */
+.arrow {
+  display: inline-block;
+  width: 12px;
+  margin-left: 8px;
+  color: var(--text-muted);
+}
+
+detail[open] .arrow {
+  transform: rotate(90deg);
+}
+
+.detail {
+  margin: 0;
+  padding: 0 12px 11px 50px;
+  color: var(--text-muted);
+  max-width: 78ch;
+  overflow-wrap: anywhere;
+}
+
+.identifier {
+  display: block;
+  margin-top: 4px;
+  font-family: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+  font-size: 11px;
+}
+
+.empty {
+  margin: 0;
+  padding: 26px 16px;
+  color: var(--text-muted);
+  text-align: center;
+  border: 1px dashed var(--line);
+  border-radius: 10px;
+}
+
+.more {
+  display: flex;
+  justify-content: center;
+  margin-top: 12px;
+}
+
+/* ── Message ──────────────────────────────────────────────────────────────── */
+
+.notice {
+  position: sticky;
+  bottom: 0;
+  margin: 0;
+  padding: 10px 18px;
+  background: var(--ground-raised);
+  border-top: 1px solid var(--warning);
+  color: var(--warning);
+}

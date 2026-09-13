@@ -1,0 +1,18 @@
+# Bitmuster(hex)	erwartete ECMAScript-Darstellung	Erlaeuterung
+0000000000000000	0	positive Null
+8000000000000000	0	negative Null wird als 0 gedruckt
+0000000000000001	5e-324	kleinste subnormale Zahl
+8000000000000001	-5e-324	kleinste subnormale Zahl, negativ
+7fefffffffffffff	1.7976931348623157e+308	groesster endlicher double
+ffefffffffffffff	-1.7976931348623157e+308	kleinster endlicher double
+4340000000000000	9007199254740992	2^53 - noch exakt ganzzahlig
+c340000000000000	-9007199254740992	-2^53
+4430000000000000	295147905179352830000	2^68 - Festkomma bis n = 21
+44b52d02c7e14af6	1e+23	erster Wert jenseits der Festkommagrenze
+3eb0c6f7a0b5ed8d	0.000001	1e-6 - noch Festkomma
+3eb0c6f7a0b5ed8c	9.999999999999997e-7	eine ULP darunter - Exponentialform
+3ff0000000000000	1	Eins ohne Dezimalpunkt
+c000000000000000	-2	negative ganze Zahl
+3fb999999999999a	0.1	ein Zehntel
+4028000000000000	12	zwoelf
+40fe208000000000	123400	Festkomma mit angehaengten Nullen

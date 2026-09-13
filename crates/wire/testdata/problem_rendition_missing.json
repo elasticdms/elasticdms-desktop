@@ -1,0 +1,7 @@
+{
+  "type": "https://errors.elasticdms.io/representation-unavailable",
+  "title": "Keine auslieferbare Fassung",
+  "status": 404,
+  "detail": "Von diesem Dokument gibt es weder eine geschwärzte noch eine Ansichtsfassung; die Urschrift wird nie ausgeliefert.",
+  "instance": "/v1/documents/doc_01JK4R7ZQ8M3N5P6T9V0WXYZAB/content"
+}

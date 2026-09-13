@@ -1,0 +1,39 @@
+{
+  "items": [
+    {
+      "documentId": "doc_01JK6T9ZS0P5Q7R8V1X2YZABCD",
+      "title": "Rahmenvertrag 2026 (geschwärzt)",
+      "mediaType": "application/pdf",
+      "size": 1048576,
+      "sha256": "sha256:f0b1a47360f3e5f8d4a7243d99c66b762fc1b90b489d90d11e9777c17561cd44",
+      "version": "12",
+      "createdAt": "2026-01-08T07:55:00Z",
+      "updatedAt": "2026-08-31T15:41:19+02:00"
+    },
+    {
+      "documentId": "doc_01JK4R7ZQ8M3N5P6T9V0WXYZAB",
+      "title": "Rechnung 2026-0412",
+      "mediaType": "application/pdf",
+      "size": 284173,
+      "sha256": "sha256:8b2d0e13d600e99b8f897dc8dd4df00b4f94a3b9f4c5fce1ecc44790a3304c96",
+      "version": "3",
+      "createdAt": "2026-03-14T09:12:44Z",
+      "updatedAt": "2026-09-02T08:14:22Z"
+    },
+    {
+      "documentId": "doc_01JK5S8ZR9N4P6Q7T0W1XYZABC",
+      "title": "Lieferschein 88213",
+      "mediaType": "application/pdf",
+      "size": 61204,
+      "sha256": "sha256:5019f53cc6d0340b0af6d05a069e56425629b88d8e8294155ba33a8136a01043",
+      "version": "1",
+      "createdAt": "2026-03-12T14:02:07Z",
+      "updatedAt": "2026-03-12T14:02:07Z"
+    }
+  ],
+  "nextCursor": null,
+  "hasMore": false,
+  "totalCapped": false,
+  "displayLimit": 5000,
+  "refineUrl": null
+}

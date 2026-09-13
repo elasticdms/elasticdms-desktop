@@ -1,0 +1,55 @@
+{
+  "deviceId": "dev_01JB8Z5K3M4N6P7Q8R9S0T1V2W",
+  "state": "pending_admin_approval",
+  "name": "eScan Poststelle EG",
+  "tenant": {
+    "id": "t_acme",
+    "name": "ACME GmbH"
+  },
+  "site": {
+    "id": "site_hq",
+    "name": "Hamburg-Rothenbaum",
+    "room": "Poststelle EG"
+  },
+  "attestation": {
+    "tier": "SOFTWARE",
+    "verdict": {
+      "chainRootsInGoogleAttestationRoot": false,
+      "verifiedBootState": null,
+      "securityLevel": "TRUSTED_ENVIRONMENT",
+      "reason": "attestation_root_untrusted"
+    },
+    "keyThumbprint": "0ZcOCORZNYy-DWpqq30jZyJGHTN0d2HglBV3uiguA4I",
+    "adminConfirmationRequired": true
+  },
+  "oauth": {
+    "clientId": "dev_01JB8Z5K3M4N6P7Q8R9S0T1V2W",
+    "tokenEndpoint": "https://auth.elasticdms.io/v1/oauth/token",
+    "tokenEndpointAuthMethod": "private_key_jwt",
+    "tokenEndpointAuthSigningAlg": "ES256",
+    "grantTypes": [
+      "client_credentials",
+      "urn:ietf:params:oauth:grant-type:device_code",
+      "refresh_token"
+    ],
+    "deviceScopes": [
+      "device:self",
+      "kiosk:login",
+      "audit:anchor"
+    ],
+    "dpopBoundAccessTokens": true
+  },
+  "policy": {
+    "networkSegmentCidr": "10.42.7.0/24",
+    "heartbeatIntervalSeconds": 300,
+    "auditAnchorIntervalSeconds": 60,
+    "idleLockSeconds": 90,
+    "absoluteSessionSeconds": 1800,
+    "expectedAppSignatureSha256": "sha256:cd00868ed978944d17c592fd5d711cdb6263f60baa40c7bf6fa4a33ec9996864"
+  },
+  "enrolledAt": "2026-09-02T08:14:22Z",
+  "enrolledBy": {
+    "sub": "usr_01JKG2Q4S6V8X0Z2B4D6F8H0J2",
+    "displayName": "Thomas Berg"
+  }
+}

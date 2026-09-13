@@ -1,0 +1,13 @@
+{
+  "type": "https://errors.elasticdms.io/saved-search-not-executable",
+  "title": "Gespeicherte Suche nicht ausführbar",
+  "status": 422,
+  "detail": "Die gespeicherte Suche filtert auf das Feld „gehalt“, das Sie nicht lesen dürfen.",
+  "instance": "/v1/mirror/searches/srch_01JKB2N4P6Q8R0S2T4V6W8X0Y2/documents",
+  "errors": [
+    {
+      "field": "gehalt",
+      "code": "field-not-readable"
+    }
+  ]
+}

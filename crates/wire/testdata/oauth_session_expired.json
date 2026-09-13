@@ -1,0 +1,5 @@
+{
+  "error": "invalid_grant",
+  "error_description": "Die Sitzung ist abgelaufen. Bitte melden Sie sich neu an.",
+  "error_uri": "https://errors.elasticdms.io/session-expired"
+}

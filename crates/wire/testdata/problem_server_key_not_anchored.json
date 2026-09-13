@@ -1,0 +1,7 @@
+{
+  "type": "https://errors.elasticdms.io/server-keys-not-anchored",
+  "title": "Ankersatz nicht bestätigt",
+  "status": 403,
+  "detail": "Der Ankersatz dieses Geräts ist in der Konsole noch nicht bestätigt.",
+  "instance": "/v1/server-keys"
+}

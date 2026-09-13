@@ -1,0 +1,33 @@
+# edms-i18n — every sentence the user reads, in every language the client speaks.
+#
+# The lowest crate in the house: it knows nothing about the client, and everything above it may
+# know it. That is deliberate — `edms-core` builds the mirror's hint file and therefore needs the
+# text, and a crate below `edms-core` is the only place from which it can have it without turning
+# the dependency direction around.
+#
+# **No TOML crate.** The catalogues are our own format in our own repository, read by our own
+# reader (src/reader.rs) — a strict subset of TOML with one sentence per key, and every deviation
+# an error instead of a guess. The `toml` crate would bring eight transitive dependencies for
+# twelve dozen key-value pairs, and its generality would buy nothing here: what it can read beyond
+# the subset must not stand in a catalogue anyway. That the files really are TOML is not a matter
+# of belief — `tests/catalogs.rs` reads them, and `scripts/check-catalogs.py` parses them with a
+# second, foreign implementation.
+#
+# tracing is the only dependency, and for one reason: a fallback has to be **loud**. English
+# standing in a German user interface because the locale was not understood is a defect, and a
+# defect that nobody can see in the log is one nobody fixes.
+
+[package]
+name = "edms-i18n"
+description = "Text catalogues of the folder client (de, en) and the locale resolution"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+tracing.workspace = true
+
+[lints]
+workspace = true

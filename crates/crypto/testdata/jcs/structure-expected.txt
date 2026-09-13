@@ -1,0 +1,1 @@
+{"a":{"x":false,"y":null,"z":true},"b":[3,1,2],"leer":{},"leeresArray":[],"zahlen":[1,100,0.5,0,1e+21,1e+22]}

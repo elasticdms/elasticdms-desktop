@@ -1,0 +1,60 @@
+# edms-cfapi — the Windows platform layer over the Cloud Filter API.
+#
+# On other targets only the pure parts (checks, block arithmetic, path map, plan, block sink,
+# worker pool), which are compiled and tested there. On Windows the only place in the whole
+# workspace with cfAPI calls (architecture rule R4).
+#
+# **Without cloud-filter.** ADR-D06 §1 had chosen that crate; this crate no longer uses it. The
+# callback machinery lives here itself (rationale in the header of src/lib.rs: cloud-filter calls
+# `unwrap` in three places inside an `extern "system"` function, and a panic there terminates the
+# process that serves Explorer), and registration has gone through Win32 `CfRegisterSyncRoot`
+# instead of WinRT since the correction to ADR-D06 §7 — which removed the last use as well.
+# windows stays pinned exactly (=0.58.0): the union and struct sizes of this crate are computed
+# against precisely these bindings.
+
+[package]
+name = "edms-cfapi"
+description = "Windows platform layer: Cloud Filter API (placeholders, hydration, dehydration)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+edms-core.workspace = true
+# The workstation's language: `GetUserDefaultUILanguage` is Windows API and therefore lives here
+# (src/locale.rs); the resolution against the catalogues happens in edms-i18n.
+edms-i18n.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+# Exactly the features this crate uses — no WinRT (`Foundation`, `Storage_Provider`), because no
+# WinRT call remains in it. Win32_System_CorrelationVector is mandatory even though nobody here
+# uses correlation vectors: without that feature there is no `CF_CALLBACK_INFO` and therefore not
+# a single callback (windows-0.58, CloudFilters/mod.rs, cfg attributes).
+windows = { workspace = true, features = [
+    "Win32_Foundation",
+    # GetUserDefaultUILanguage and LCIDToLocaleName (src/locale.rs): which language the menus of
+    # this workstation are in.
+    "Win32_Globalization",
+    # `CreateFileW` and `CreateDirectoryW` take `SECURITY_ATTRIBUTES`; without this feature the
+    # functions do not exist, even though `None` is passed everywhere here. It also carries the
+    # access token (`TOKEN_USER`), out of which src/platform/win.rs reads the SID of the signed-in
+    # user — the key of the navigation pane entry is named after it.
+    "Win32_Security",
+    "Win32_Storage_CloudFilters",
+    "Win32_Storage_FileSystem",
+    "Win32_System_CorrelationVector",
+    "Win32_System_IO",
+    # The keys of the entry in Explorer's navigation pane, under HKLM
+    # (src/platform/registry.rs). `RegCreateKeyExW` additionally needs Win32_Security, which is
+    # already up there.
+    "Win32_System_Registry",
+    # `OpenProcessToken` and `GetCurrentProcess` — the two calls in front of the SID.
+    "Win32_System_Threading",
+] }
+
+[lints]
+workspace = true

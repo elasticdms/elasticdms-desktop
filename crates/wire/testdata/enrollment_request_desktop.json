@@ -1,0 +1,29 @@
+{
+  "enrollmentCode": "K7QM-4T2X",
+  "deviceKind": "desktop",
+  "publicJwk": {
+    "kty": "EC",
+    "crv": "P-256",
+    "x": "f83OJ3D2xF1Bg8vub9tLe1gHMzV76e8Tus9uPHvRVEU",
+    "y": "x_FEzRu9m36HLN_tue659LNpXW6pCyStikYjKIWI5a0",
+    "alg": "ES256",
+    "use": "sig",
+    "kid": "dev_01JK4R7ZQ8M3N5P6T9V0WXYZAB#1"
+  },
+  "attestation": {
+    "type": "none",
+    "available": false
+  },
+  "platform": {
+    "os": "Windows",
+    "osVersion": "10.0.26100",
+    "arch": "x86_64"
+  },
+  "app": {
+    "packageName": "de.elasticdms.folderclient",
+    "versionName": "1.0.0",
+    "buildHash": "sha256:924fb28aff51ee6e70cf048ac486fcbf9c3fd7a609fbc537f07173fdd5cda441",
+    "signatureSha256": "sha256:cd00868ed978944d17c592fd5d711cdb6263f60baa40c7bf6fa4a33ec9996864"
+  },
+  "requestedName": "Arbeitsplatz Buchhaltung EG"
+}

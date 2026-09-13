@@ -1,0 +1,8 @@
+{
+  "type": "https://errors.elasticdms.io/not-found",
+  "title": "Briefkorb nicht sichtbar",
+  "status": 404,
+  "detail": "Der Briefkorb bsk_01JKC2R6V8W0X2Y4Z6A8B1C3D5 ist für Sie nicht sichtbar. Die Datei bleibt liegen, bis ein sichtbarer Briefkorb gewählt ist.",
+  "instance": "/v1/ingest-uploads",
+  "traceId": "01JKC4D6E8F0G2H4J6K8M0N2P5"
+}

@@ -1,0 +1,6 @@
+# One toolchain for all machines. The lower bound in the workspace (rust-version) is 1.90;
+# building and checking happen with exactly this version.
+[toolchain]
+channel = "1.98.1"
+components = ["rustfmt", "clippy"]
+targets = ["aarch64-apple-darwin", "x86_64-apple-darwin", "x86_64-pc-windows-msvc", "aarch64-pc-windows-msvc"]

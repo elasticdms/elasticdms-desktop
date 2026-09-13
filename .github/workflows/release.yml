@@ -1,0 +1,767 @@
+# release.yml — the only place where what the customer gets comes into being.
+#
+# THE REASON: the folder client is rolled out to managed devices — over Intune and over GPO. That
+# demands two products no `cargo build` delivers: a .pkg for macOS (Jamf takes only .pkg, Intune
+# takes it as "macOS app (PKG)"; and a bundle put into /Applications by the installer carries no
+# quarantine and is never translocated, which would destroy the extension — ADR-D05) and an .msi
+# for Windows (GPO software distribution knows only MSI). They are built here and nowhere else, so
+# that "what the customer gets" is never the result of a hand movement on somebody's machine.
+#
+# This workflow builds NOTHING itself. It calls the two packaging scripts and checks afterwards:
+#
+#   scripts/macos-package.sh build   -> target/pkg/elasticdms-<version>.pkg
+#       in: SIGNING_IDENTITY (app; "-" means ad hoc), INSTALLER_IDENTITY (empty means an unsigned
+#       package), ASC_KEY_P8/ASC_KEY_ID/ASC_ISSUER (notarisation lives in the script),
+#       EDMS_API_BASE/EDMS_AUTH_BASE/EDMS_APP_BASE (all three or none).
+#   scripts/windows-package.ps1      -> target/**/elasticdms-<version>.msi
+#       in: VERSION, SIGNTOOL, PFX_PATH, PFX_PASSWORD (empty paths mean unsigned).
+#       The WiX version stands in the script (WIX_VERSION) and not here: from WiX 6 the NuGet
+#       package carries an "Open Source Maintenance Fee" — a legal question, not a technical one
+#       (packaging/windows/elasticdms.wxs, section "WHICH WiX VERSION").
+#
+# Signing is EXPLICITLY OPTIONAL. Without secrets unsigned packages arise, the run stays green, and
+# the summary says in whole sentences what is missing. A run from a fork gets no secret but
+# GITHUB_TOKEN (GitHub docs, "Using secrets in GitHub Actions"); it must therefore not fail.
+# Everything else: docs/DELIVERY.md.
+
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  # A trial run without a tag: builds both packages, publishes nothing.
+  workflow_dispatch:
+
+# The default is nothing. Only the publishing job raises it to contents: write — and that is
+# exactly the one that runs no foreign action code (tj-actions/changed-files, CVE-2025-30066: the
+# attacker moved all version tags onto a malicious commit and let secrets run into the log).
+permissions: {}
+
+env:
+  CARGO_TERM_COLOR: always
+
+concurrency:
+  group: release-${{ github.ref }}
+  # Stays false: a half-uploaded release is worse than a duplicate run.
+  cancel-in-progress: false
+
+jobs:
+  # ── 1. The version, before a macOS minute is spent ────────────────────────────────────────────
+  version:
+    name: Version against Cargo.toml
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.read.outputs.version }}
+      approval: ${{ steps.read.outputs.approval }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # Full history: the step "Provenance" below checks whether the tag sits on main. With the
+          # default depth of 1 there would be no ancestor to check that against.
+          fetch-depth: 0
+
+      - id: read
+        name: Compare the tag with [workspace.package] version
+        env:
+          TAG: ${{ github.ref_name }}
+          REF_KIND: ${{ github.ref_type }}
+        run: |
+          set -euo pipefail
+          # No cargo: the bar should fall before a toolchain is downloaded. awk reads exactly the
+          # section [workspace.package]; a `sed -n 's/^version/'` would also find the first version
+          # line of any other section.
+          version="$(awk '
+            /^\[workspace\.package\]/ { inside = 1; next }
+            /^\[/                     { inside = 0 }
+            inside && /^version *= *"/  { gsub(/^version *= *"|"$/, ""); print; exit }
+          ' Cargo.toml)"
+          if [ -z "$version" ]; then
+            printf 'Cargo.toml has no line of the form version = "…" under [workspace.package].\n' >&2
+            exit 1
+          fi
+          # Typographic quotes belong in SINGLE-quoted printf formats; inside a double-quoted word
+          # shellcheck takes them for a mistyped ASCII quote (SC1111), and a fault of the bundle
+          # script once sat in exactly that trap.
+          if [ "$REF_KIND" != "tag" ]; then
+            printf 'Trial run without a tag (%s “%s”): the version built is %s from Cargo.toml, nothing is published.\n' \
+              "$REF_KIND" "$TAG" "$version" | tee -a "$GITHUB_STEP_SUMMARY"
+            {
+              echo "version=${version}"
+              echo "approval=no"
+            } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ "$TAG" != "v${version}" ]; then
+            printf 'The tag is “%s”, Cargo.toml names the version “%s”; the tag expected is therefore “v%s”.\n' \
+              "$TAG" "$version" "$version" >&2
+            printf 'Either set the tag anew or raise [workspace.package] version — both at once is never right.\n' >&2
+            exit 1
+          fi
+          {
+            echo "version=${version}"
+            echo "approval=yes"
+          } >> "$GITHUB_OUTPUT"
+          printf 'The tag “%s” and the version “%s” from Cargo.toml agree.\n' \
+            "$TAG" "$version" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Provenance — the tag has to sit on main
+        if: github.ref_type == 'tag'
+        env:
+          TAG: ${{ github.ref_name }}
+          COMMIT: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          # THE REASON: anybody with write access may put a tag on any commit — on a branch nobody
+          # has ever read, too. But what gets signed and published is only what took the way over
+          # main. The environment "sign" additionally keeps the certificates bound to the tags v*;
+          # this check is the second half of that.
+          git fetch --no-tags origin main
+          if git merge-base --is-ancestor "$COMMIT" origin/main; then
+            printf 'The tag “%s” sits on main.\n' "$TAG" >> "$GITHUB_STEP_SUMMARY"
+          else
+            printf 'The tag “%s” points at a commit that is not contained in main.\n' "$TAG" >&2
+            printf 'Only what has gone over main is published — merge first, then tag anew.\n' >&2
+            exit 1
+          fi
+
+  # ── 2. macOS: a universal .pkg ───────────────────────────────────────────────────────────────
+  macos:
+    name: macOS .pkg
+    needs: version
+    runs-on: macos-15
+    # Only these two jobs see the signing secrets: they live in the environment "signing", not in
+    # the repository. In GitHub the environment carries the protection rule "Selected branches and
+    # tags" with the pattern v* — a push to any branch therefore does not reach the certificates,
+    # not even from the main repo. (Fork PRs never get any anyway.)
+    environment: signing
+    permissions:
+      contents: read
+    outputs:
+      signed: ${{ steps.situation.outputs.sign }}
+      notarised: ${{ steps.situation.outputs.notarise }}
+      package: ${{ steps.package.outputs.name }}
+    env:
+      # Secrets are available in NO `if:` (context table of the GitHub docs; actionlint rejects
+      # it). Hence as a job environment, and the situation stands in a step output. A secret that
+      # is not set is the empty string.
+      APPROVAL: ${{ needs.version.outputs.approval }}
+      APPLE_CERT_P12: ${{ secrets.APPLE_CERT_P12 }}
+      # MIGRATION BRIDGE, to be removed together with the German-named secrets: the conversion to
+      # English renamed the variable here, the secret in the environment still carries the old
+      # name. Nobody can rename a GitHub secret — its value cannot be read back, not even by its
+      # owner — and this password was chosen at export time, not issued by Apple. So the workflow
+      # accepts both names, preferring the English one. The step below prints which of the two
+      # actually arrived, so this bridge cannot hide an empty secret.
+      APPLE_CERT_PASSWORD: ${{ secrets.APPLE_CERT_PASSWORD || secrets.APPLE_CERT_PASSWORT }}
+      APPLE_INSTALLER_P12: ${{ secrets.APPLE_INSTALLER_P12 }}
+      APPLE_INSTALLER_PASSWORD: ${{ secrets.APPLE_INSTALLER_PASSWORD || secrets.APPLE_INSTALLER_PASSWORT }}
+      APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Toolchain from rust-toolchain.toml
+        # Fetches 1.98.1 together with the four targets named there; the image brings only 1.98.0.
+        run: rustup show
+
+      # v2.9.2, pinned to the commit instead of the movable tag (CVE-2025-30066).
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
+        with:
+          shared-key: release-macos
+          # Creates no cache: the repository's 10 GB budget is filled by ci.yml on main.
+          save-if: false
+
+      - id: situation
+        name: Are the signing secrets deposited?
+        run: |
+          set -euo pipefail
+          # WHAT IS THERE, BY NAME. Three seconds of output against the failure mode that has cost
+          # this pipeline two runs: a secret whose name moved on one side. `APPLE_CERT_PASSWORT`
+          # lay in the environment while the workflow read `APPLE_CERT_PASSWORD`, GitHub handed
+          # out the empty string without a word, and `security import` said "MAC verification
+          # failed (wrong password?)" after thirteen seconds of keychain work.
+          printf 'Secret                    present\n'
+          for name in APPLE_CERT_P12 APPLE_CERT_PASSWORD APPLE_INSTALLER_P12 \
+                      APPLE_INSTALLER_PASSWORD APPLE_API_KEY_P8; do
+            value="$(eval "printf '%s' \"\${$name:-}\"")"
+            if [ -n "$value" ]; then state="yes"; else state="NO"; fi
+            printf '%-25s %s\n' "$name" "$state"
+          done
+          # A certificate without its password is not a certificate. Both p12 files here carry one;
+          # an empty password would reach `security import` as a wrong one.
+          if [ -n "${APPLE_CERT_P12:-}" ] && [ -z "${APPLE_CERT_PASSWORD:-}" ]; then
+            printf 'APPLE_CERT_P12 is deposited, APPLE_CERT_PASSWORD is empty — compare the names in the environment `signing` with the ones above.\n' >&2
+            if [ "${APPROVAL:-no}" = "yes" ]; then exit 1; fi
+          fi
+          if [ -n "${APPLE_INSTALLER_P12:-}" ] && [ -z "${APPLE_INSTALLER_PASSWORD:-}" ]; then
+            printf 'APPLE_INSTALLER_P12 is deposited, APPLE_INSTALLER_PASSWORD is empty — compare the names in the environment `signing` with the ones above.\n' >&2
+            if [ "${APPROVAL:-no}" = "yes" ]; then exit 1; fi
+          fi
+          # Both or neither: without "Developer ID Installer" there is no signed .pkg, and the
+          # notarisation service accepts signed flat packages only.
+          if [ -n "${APPLE_CERT_P12:-}" ] && [ -n "${APPLE_INSTALLER_P12:-}" ]; then
+            echo "sign=yes" >> "$GITHUB_OUTPUT"
+            # The suffix is computed HERE and not in an expression, because `a && '' || b` in a
+            # GitHub expression always yields b: the empty string is falsy, so the signed case
+            # would have carried `-unsigned` and nobody would have noticed until someone tried to
+            # install it.
+            echo "suffix=" >> "$GITHUB_OUTPUT"
+            if [ -n "${APPLE_API_KEY_P8:-}" ]; then
+              echo "notarise=yes" >> "$GITHUB_OUTPUT"
+            else
+              echo "notarise=no" >> "$GITHUB_OUTPUT"
+            fi
+          else
+            # A TAG IS NOT A TRIAL RUN. Unsigned is the right outcome for a fork PR and for a
+            # workflow_dispatch trial, and a wrong one for something that carries a version number:
+            # the artefact looks finished, is named like a release, and Gatekeeper refuses it on
+            # every machine that did not build it. This very release ran through unsigned because
+            # the workflow asked for an environment named `sign` while the secrets sat in `signing`
+            # — GitHub silently creates the missing environment, hands out no secret, and nothing
+            # complains. So the tag path stops here instead.
+            if [ "${APPROVAL:-no}" = "yes" ]; then
+              printf 'The tag %s wants a release, but no signing certificate is reachable.\n' "${GITHUB_REF_NAME}" >&2
+              printf 'Expected in the environment `signing`: APPLE_CERT_P12, APPLE_INSTALLER_P12 (and APPLE_API_KEY_P8 for notarisation).\n' >&2
+              printf 'Check that the job names the same environment the secrets live in, and that the tag matches its protection rule.\n' >&2
+              exit 1
+            fi
+            echo "sign=no" >> "$GITHUB_OUTPUT"
+            echo "notarise=no" >> "$GITHUB_OUTPUT"
+            echo "suffix=-unsigned" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: A keychain for this run only
+        if: steps.situation.outputs.sign == 'yes'
+        run: |
+          set -euo pipefail
+          password="$(openssl rand -base64 24)"
+          echo "::add-mask::$password"
+          bundle="$RUNNER_TEMP/elasticdms.keychain-db"
+          security create-keychain -p "$password" "$bundle"
+          security set-keychain-settings -lut 21600 "$bundle"
+          security unlock-keychain -p "$password" "$bundle"
+          printf '%s' "$APPLE_CERT_P12" | base64 --decode > "$RUNNER_TEMP/app.p12"
+          printf '%s' "$APPLE_INSTALLER_P12" | base64 --decode > "$RUNNER_TEMP/inst.p12"
+          security import "$RUNNER_TEMP/app.p12" -k "$bundle" -P "$APPLE_CERT_PASSWORD" \
+            -T /usr/bin/codesign -T /usr/bin/security
+          security import "$RUNNER_TEMP/inst.p12" -k "$bundle" -P "$APPLE_INSTALLER_PASSWORD" \
+            -T /usr/bin/productbuild -T /usr/bin/productsign -T /usr/bin/security
+          rm -f "$RUNNER_TEMP/app.p12" "$RUNNER_TEMP/inst.p12"
+          # Without this line codesign in CI asks for a password nobody types: the step hangs until
+          # the time limit or aborts with errSecInternalComponent.
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$password" "$bundle"
+          # Set the search list explicitly; codesign finds an identity only there. The quotes are
+          # mandatory, otherwise shellcheck reports SC2046.
+          security list-keychains -d user -s "$bundle" "$HOME/Library/Keychains/login.keychain-db"
+          # The full names, not "Developer ID Application": macos-package.sh hands them on to
+          # codesign and productsign, and there the name is the key.
+          app_id="$(security find-identity -v -p codesigning "$bundle" | awk -F'"' '/Developer ID Application/ { print $2; exit }')"
+          inst_id="$(security find-identity -v "$bundle" | awk -F'"' '/Developer ID Installer/ { print $2; exit }')"
+          if [ -z "$app_id" ] || [ -z "$inst_id" ]; then
+            printf 'An identity is missing from this run’s keychain: application “%s”, installer “%s”.\n' \
+              "${app_id:-missing}" "${inst_id:-missing}" >&2
+            printf 'Those are two different certificates. A development certificate (“Apple Development”) is good neither for distributing nor for signing an installer file.\n' >&2
+            exit 1
+          fi
+          {
+            echo "APP_ID=$app_id"
+            echo "INST_ID=$inst_id"
+          } >> "$GITHUB_ENV"
+
+      - name: Put down the notarisation key
+        if: steps.situation.outputs.notarise == 'yes'
+        run: |
+          set -euo pipefail
+          key="$RUNNER_TEMP/asc.p8"
+          printf '%s' "$APPLE_API_KEY_P8" | base64 --decode > "$key"
+          chmod 600 "$key"
+          echo "ASC_KEY_P8=$key" >> "$GITHUB_ENV"
+
+      - name: Build the package
+        env:
+          # Empty, or "-", means: do not sign. macos-package.sh then runs all the way through and
+          # delivers an unsigned package — that is the fork case.
+          SIGNING_IDENTITY: ${{ env.APP_ID || '-' }}
+          INSTALLER_IDENTITY: ${{ env.INST_ID || '' }}
+          ASC_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          ASC_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          # All three or none (otherwise the script aborts). If they are deposited as repository
+          # variables, the login item carries the tenant's addresses; otherwise the MDM supplies
+          # them — an invented default would mean "wrong tenant, and everything works".
+          EDMS_API_BASE: ${{ vars.EDMS_API_BASE }}
+          EDMS_AUTH_BASE: ${{ vars.EDMS_AUTH_BASE }}
+          EDMS_APP_BASE: ${{ vars.EDMS_APP_BASE }}
+        run: |
+          set -euo pipefail
+          if [ ! -x scripts/macos-package.sh ]; then
+            printf 'scripts/macos-package.sh is missing or not executable; without that script no .pkg arises.\n' >&2
+            exit 1
+          fi
+          # 14 GB on the runner, two target directories in the release profile plus the cache.
+          df -h /
+          scripts/macos-package.sh build
+          df -h /
+
+      - id: package
+        name: Name the package
+        env:
+          SIGN: ${{ steps.situation.outputs.sign }}
+        run: |
+          set -euo pipefail
+          # Exactly this one file is the product; next to it in target/pkg/ lie the two component
+          # packages nobody delivers.
+          package="target/pkg/elasticdms-$VERSION.pkg"
+          if [ ! -f "$package" ]; then
+            printf 'scripts/macos-package.sh did not produce %s. In target/pkg/ there is:\n' "$package" >&2
+            ls -la target/pkg 2>/dev/null >&2 || printf '(no target/pkg)\n' >&2
+            exit 1
+          fi
+          # An unsigned package carries that in its name. Whoever passes it on outside the web
+          # interface should see without looking things up that it is a test specimen.
+          if [ "$SIGN" != "yes" ]; then
+            new="target/pkg/elasticdms-$VERSION-unsigned.pkg"
+            mv "$package" "$new"
+            package="$new"
+          fi
+          echo "PACKAGE=$package" >> "$GITHUB_ENV"
+          echo "name=$(basename "$package")" >> "$GITHUB_OUTPUT"
+
+      - name: No mock in the package
+        run: |
+          set -euo pipefail
+          # A second, independent probe on the finished product archive (macos-package.sh verify
+          # sees the unpacked payload). `pkgutil --payload-files` is no good for it: on a product
+          # archive it shows only the FIRST component — measured on the development machine against
+          # an archive of two components. So expand it and read every bill of materials separately.
+          unpacked="$RUNNER_TEMP/package-contents"
+          rm -rf "$unpacked"
+          pkgutil --expand "$PACKAGE" "$unpacked"
+          content="$RUNNER_TEMP/package-contents.txt"
+          : > "$content"
+          found=0
+          for bom in "$unpacked"/*.pkg/Bom; do
+            [ -f "$bom" ] || continue
+            lsbom -s "$bom" >> "$content"
+            found=$((found + 1))
+          done
+          if [ "$found" -eq 0 ]; then
+            printf '%s holds no component with a bill of materials; this check would have read nothing and would have been green and worthless.\n' "$PACKAGE" >&2
+            exit 1
+          fi
+          if grep -i -q mock "$content"; then
+            printf 'The package holds the test rig edms-mock; it carries a contract-faithful sign-in and never belongs in a product:\n' >&2
+            grep -i mock "$content" >&2
+            exit 1
+          fi
+          if ! grep -q '/elasticdms\.app/Contents/MacOS/elasticdms$' "$content"; then
+            printf 'The package holds no elasticdms.app/Contents/MacOS/elasticdms; something other than the client was built.\n' >&2
+            exit 1
+          fi
+          if ! grep -q '\.appex/Contents/MacOS/elasticdms-fileprovider$' "$content"; then
+            printf 'The package does not hold the file provider extension; without it the folder stays empty in Finder (ADR-D05).\n' >&2
+            exit 1
+          fi
+          printf 'The payload carries %s component(s), the app and the extension, and no mock.\n' "$found"
+
+      - name: Check the package signature
+        if: steps.situation.outputs.sign == 'yes'
+        run: |
+          set -euo pipefail
+          # Proves that the packaging script really used the identities. Without this probe a
+          # silently ignored INSTALLER_IDENTITY would deliver an unsigned package under the name of
+          # a signed one.
+          pkgutil --check-signature "$PACKAGE"
+          if ! pkgutil --check-signature "$PACKAGE" | grep -q 'Developer ID Installer'; then
+            printf 'The package %s carries no “Developer ID Installer” signature, although the secrets are deposited.\n' "$PACKAGE" >&2
+            exit 1
+          fi
+
+      - name: Check the notarisation
+        if: steps.situation.outputs.notarise == 'yes'
+        run: |
+          set -euo pipefail
+          # The return value, not the output: on a package without a ticket `stapler validate`
+          # writes only "Processing: …" and no clear refusal (measured in macos-package.sh).
+          xcrun stapler validate "$PACKAGE"
+          spctl --assess --type install -vv "$PACKAGE"
+
+      - name: Checksum and summary
+        env:
+          SIGN: ${{ steps.situation.outputs.sign }}
+          NOTARISE: ${{ steps.situation.outputs.notarise }}
+        run: |
+          set -euo pipefail
+          (cd "$(dirname "$PACKAGE")" && shasum -a 256 "$(basename "$PACKAGE")" > "$(basename "$PACKAGE").sha256")
+          # Typographic quotes belong in SINGLE-quoted printf formats (SC1111), and the backticks
+          # in them are Markdown for the summary, not a substitution (SC2016).
+          # shellcheck disable=SC2016
+          {
+            printf '### macOS\n\n'
+            printf '* Package: `%s`\n' "$(basename "$PACKAGE")"
+            if [ "$SIGN" = "yes" ]; then
+              printf '* Signature: Developer ID Application (app and extension) and Developer ID Installer (package).\n'
+            else
+              printf '* Signature: **ad hoc**. This package is a test specimen and must not be distributed; the secrets `APPLE_CERT_P12` and `APPLE_INSTALLER_P12` are missing. Gatekeeper refuses the app as soon as it comes over a browser or a network drive, and every MDM pre-approval falls away: it addresses apps as “bundle ID (team ID)”, and ad hoc has no team ID.\n'
+            fi
+            if [ "$NOTARISE" = "yes" ]; then
+              printf '* Notarisation: carried out and stapled (`stapler validate` and `spctl` checked).\n'
+            else
+              printf '* Notarisation: not carried out; `APPLE_API_KEY_P8` or the signature is missing for it.\n'
+            fi
+            printf '\n'
+            # Four spaces instead of a fence: a code block without backticks in the shell word.
+            sed 's/^/    /' "$PACKAGE.sha256"
+            printf '\n'
+            printf 'After the installation one manual step remains that no installer can take off the user: *System Settings → General → Login Items and Extensions → File Providers → switch “elasticdms” on* (ADR-D05, measurement 4).\n'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          # The name says what the file IS, and whether it is signed. A reader who finds
+          # `-unsigned` in a download knows before opening it that Gatekeeper will refuse.
+          name: elasticdms-desktop-installer-macos-${{ needs.version.outputs.version }}${{ steps.situation.outputs.suffix }}
+          # Exactly the product, not the component packages from target/pkg/.
+          path: |
+            ${{ env.PACKAGE }}
+            ${{ env.PACKAGE }}.sha256
+          if-no-files-found: error
+          # A .pkg is already packed; zipping it a second time only costs time.
+          compression-level: 0
+
+      - name: Key and keychain gone again
+        if: always()
+        run: |
+          set -euo pipefail
+          rm -f "$RUNNER_TEMP/asc.p8" "$RUNNER_TEMP/app.p12" "$RUNNER_TEMP/inst.p12"
+          security delete-keychain "$RUNNER_TEMP/elasticdms.keychain-db" 2>/dev/null || true
+
+  # ── 3. Windows: MSI ──────────────────────────────────────────────────────────────────────────
+  windows:
+    name: Windows .msi
+    needs: version
+    runs-on: windows-2025
+    # Only these two jobs see the signing secrets: they live in the environment "signing", not in
+    # the repository. In GitHub the environment carries the protection rule "Selected branches and
+    # tags" with the pattern v* — a push to any branch therefore does not reach the certificates,
+    # not even from the main repo. (Fork PRs never get any anyway.)
+    environment: signing
+    permissions:
+      contents: read
+      # For the OIDC exchange with Azure. It hands out no secret: GitHub issues a short-lived
+      # token, Azure trades it for one of its own, and the private key never leaves the service.
+      id-token: write
+    outputs:
+      signed: ${{ steps.situation.outputs.sign }}
+      package: ${{ steps.package.outputs.name }}
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      APPROVAL: ${{ needs.version.outputs.approval }}
+      VERSION: ${{ needs.version.outputs.version }}
+      # Six values, all six or none — see the step "Is a signing certificate deposited?".
+      AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+      AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      SIGNING_ENDPOINT: ${{ vars.SIGNING_ENDPOINT }}
+      SIGNING_ACCOUNT: ${{ vars.SIGNING_ACCOUNT }}
+      SIGNING_PROFILE: ${{ vars.SIGNING_PROFILE }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Toolchain from rust-toolchain.toml
+        run: rustup show
+
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
+        with:
+          shared-key: release-windows
+          save-if: false
+
+      - id: situation
+        name: Is a signing certificate deposited?
+        run: |
+          # All six or none. A half configuration would let the packaging script enter azure mode
+          # and die in the middle of the build; as "no" it delivers an unsigned MSI and says so.
+          $wanted = @(
+            'AZURE_CLIENT_ID', 'AZURE_TENANT_ID', 'AZURE_SUBSCRIPTION_ID',
+            'SIGNING_ENDPOINT', 'SIGNING_ACCOUNT', 'SIGNING_PROFILE'
+          )
+          $missing = @($wanted | Where-Object { -not [Environment]::GetEnvironmentVariable($_) })
+          # In PowerShell an if statement may not head a pipeline ("An empty pipe element is not
+          # allowed", measured with the parser on the development machine); hence into a variable
+          # first, then write.
+          $situation = if ($missing.Count -eq 0) { 'sign=yes' } else { 'sign=no' }
+          $situation | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          # Computed here, not in an expression: `a && '' || b` in a GitHub expression always
+          # yields b, because the empty string is falsy.
+          $suffix = if ($missing.Count -eq 0) { 'suffix=' } else { 'suffix=-unsigned' }
+          $suffix | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          if ($missing.Count -eq 0) {
+            Write-Host "Signing over Azure Artifact Signing: $env:SIGNING_ACCOUNT / $env:SIGNING_PROFILE"
+          }
+          elseif ($env:APPROVAL -eq 'yes') {
+            # Same hard stop as on macOS: a tag wants a release, and an unsigned MSI is not one.
+            # Whoever wants an unsigned test specimen builds it from a branch, where ci.yml does
+            # exactly that.
+            Write-Host "::error::The tag $env:GITHUB_REF_NAME wants a release, but the signing configuration is incomplete."
+            Write-Host "::error::Missing in the environment ``signing``: $($missing -join ', '). Secrets are AZURE_*, variables are SIGNING_*."
+            exit 1
+          }
+          else {
+            Write-Host "::warning::Unsigned MSI - missing: $($missing -join ', ')."
+          }
+
+      - name: Log in to Azure over OIDC
+        if: steps.situation.outputs.sign == 'yes'
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Find signtool
+        if: steps.situation.outputs.sign == 'yes'
+        run: |
+          # Never hard-code the path to signtool.exe: the image's SDK version changes (today
+          # 10.0.26100). A fixed path would break exactly in the run with secrets, so never in the
+          # fork test. The dlib demands at least 10.0.2261.755 — older SDKs cannot load it.
+          $st = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\signtool.exe" -ErrorAction SilentlyContinue |
+            Sort-Object FullName -Descending | Select-Object -First 1
+          if (-not $st) { throw 'No signtool.exe is to be found on this image; without it nothing can be signed.' }
+          "SIGNTOOL=$($st.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          & $st.FullName 2>&1 | Select-Object -First 2
+
+      - name: Build the MSI
+        run: |
+          # The script fetches WiX itself (WIX_VERSION stands there, and which version is allowed is
+          # a legal question), signs the EXE BEFORE packing and the MSI afterwards. The other way
+          # round the embedded file would carry no signature.
+          if (-not (Test-Path 'scripts/windows-package.ps1')) {
+            throw 'scripts/windows-package.ps1 is missing; without that script no MSI arises.'
+          }
+          dotnet --version
+          Get-PSDrive -Name C | Format-Table -AutoSize
+          # Provisioning is the runner's job, not the script's: the script deliberately touches
+          # nothing outside target/, so it fails loudly when wix is absent instead of installing a
+          # global .NET tool behind a developer's back. `-Task tool` is that install, and it keeps
+          # the version in one place (WIX_VERSION in the script) rather than duplicating it here.
+          ./scripts/windows-package.ps1 -Task tool
+          if ($LASTEXITCODE -ne 0) { throw "scripts/windows-package.ps1 -Task tool ended with $LASTEXITCODE." }
+          ./scripts/windows-package.ps1
+          if ($LASTEXITCODE -ne 0) { throw "scripts/windows-package.ps1 ended with $LASTEXITCODE." }
+          Get-PSDrive -Name C | Format-Table -AutoSize
+
+      - id: package
+        name: Name the package
+        env:
+          SIGN: ${{ steps.situation.outputs.sign }}
+        run: |
+          # The search goes over the version in the name, not over a fixed folder: which
+          # subdirectory of target/ the script uses is its own business.
+          $found = @(Get-ChildItem -Path 'target' -Recurse -Depth 3 -File -Filter "elasticdms-$env:VERSION*.msi" -ErrorAction SilentlyContinue)
+          if ($found.Count -ne 1) {
+            throw "Under target\ there is not exactly one elasticdms-$env:VERSION*.msi but $($found.Count). Found: $($found.FullName -join ', ')"
+          }
+          $msi = $found[0]
+          if ($env:SIGN -ne 'yes') {
+            $new = $msi.FullName -replace '\.msi$', '-unsigned.msi'
+            Move-Item -LiteralPath $msi.FullName -Destination $new
+            $msi = Get-Item -LiteralPath $new
+          }
+          "MSI_PATH=$($msi.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "name=$($msi.Name)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          # The transform of every further language lies beside the MSI (scripts\windows-package.ps1,
+          # $Cultures); it is signed there and applied there, and it has to leave the runner with the
+          # MSI. TRANSFORMS= names a file: a transform that is not beside the package is a failed
+          # installation (1624), not a package in the wrong language.
+          "MST_GLOB=$(Join-Path (Split-Path -Parent $msi.FullName) '*.mst')" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: No mock in the MSI
+        run: |
+          # The MSI's file table is the only reliable list of what gets installed; a text search in
+          # the raw image would not find the names inside the cabinet file.
+          $wi = New-Object -ComObject WindowsInstaller.Installer
+          $db = $wi.GetType().InvokeMember('OpenDatabase', 'InvokeMethod', $null, $wi, @($env:MSI_PATH, 0))
+          $view = $db.GetType().InvokeMember('OpenView', 'InvokeMethod', $null, $db, @('SELECT `FileName` FROM `File`'))
+          $view.GetType().InvokeMember('Execute', 'InvokeMethod', $null, $view, $null)
+          $names = @()
+          while ($true) {
+            $set = $view.GetType().InvokeMember('Fetch', 'InvokeMethod', $null, $view, $null)
+            if ($null -eq $set) { break }
+            $names += $set.GetType().InvokeMember('StringData', 'GetProperty', $null, $set, @(1))
+            [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($set)
+          }
+          # An open MSI database holds a handle on the file, and PowerShell frees a COM object only
+          # when the garbage collector gets round to it. Without these four lines the rename in the
+          # same process fails with "used by another process" — against a handle of its own.
+          foreach ($com in @($view, $db, $wi)) {
+            [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($com)
+          }
+          [GC]::Collect()
+          [GC]::WaitForPendingFinalizers()
+          if ($names.Count -eq 0) {
+            throw "The file table of $env:MSI_PATH is empty; this check would have read nothing and would have been green and worthless."
+          }
+          $mock = $names | Where-Object { $_ -match 'mock' }
+          if ($mock) {
+            throw "The MSI holds the test rig edms-mock ($($mock -join ', ')); it never belongs in a product."
+          }
+          if (-not ($names | Where-Object { $_ -match 'elasticdms\.exe' })) {
+            throw "The MSI holds no elasticdms.exe; something other than the client was packed."
+          }
+          "The file table names $($names.Count) file(s), among them elasticdms.exe and no mock."
+
+      - name: Check the MSI signature
+        if: steps.situation.outputs.sign == 'yes'
+        run: |
+          & $env:SIGNTOOL verify /pa /v $env:MSI_PATH
+          if ($LASTEXITCODE -ne 0) {
+            throw "The MSI carries no valid Authenticode signature, although the signing configuration is complete; scripts/windows-package.ps1 apparently did not enter azure mode."
+          }
+          $exe = Get-ChildItem -Path 'target' -Recurse -Depth 4 -File -Filter 'elasticdms.exe' -ErrorAction SilentlyContinue |
+            Where-Object { $_.FullName -match 'release' } | Select-Object -First 1
+          if ($exe) {
+            & $env:SIGNTOOL verify /pa /v $exe.FullName
+            if ($LASTEXITCODE -ne 0) {
+              throw 'The elasticdms.exe carries no valid signature; it has to be signed BEFORE packing, otherwise the embedded file is unsigned.'
+            }
+          }
+
+      - name: Checksum and summary
+        env:
+          SIGN: ${{ steps.situation.outputs.sign }}
+        run: |
+          $msi = Get-Item -LiteralPath $env:MSI_PATH
+          $sum = (Get-FileHash -Algorithm SHA256 -LiteralPath $msi.FullName).Hash.ToLower()
+          # Lower case and two spaces: exactly the shape `sha256sum -c` reads.
+          "$sum  $($msi.Name)" | Out-File -FilePath "$($msi.FullName).sha256" -Encoding ascii
+          $state = if ($env:SIGN -eq 'yes') {
+            'Authenticode over Azure Artifact Signing, countersigned by the Microsoft time stamp authority. The certificate lives 72 hours; the timestamp is what makes the signature outlast it.'
+          } else {
+            '**unsigned**. This package is a test specimen and must not be distributed; the signing configuration is incomplete. SmartScreen warns on a double click, and every policy that demands signed packages locks it out.'
+          }
+          @(
+            '### Windows',
+            '',
+            "* Package: ``$($msi.Name)``",
+            "* Signature: $state",
+            '',
+            "      $sum  $($msi.Name)",
+            '',
+            'The uninstall deregisters the sync root; a root left standing jams later installations (packaging/windows/README.md).'
+          ) | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: elasticdms-desktop-installer-windows-${{ needs.version.outputs.version }}${{ steps.situation.outputs.suffix }}
+          path: |
+            ${{ env.MSI_PATH }}
+            ${{ env.MSI_PATH }}.sha256
+            ${{ env.MST_GLOB }}
+          if-no-files-found: error
+          compression-level: 0
+
+      - name: Certificate gone again
+        if: always()
+        run: Remove-Item -LiteralPath (Join-Path $env:RUNNER_TEMP 'elasticdms.pfx') -ErrorAction SilentlyContinue
+
+  # ── 4. Publish ───────────────────────────────────────────────────────────────────────────────
+  publish:
+    name: Draft of the release
+    needs: [version, macos, windows]
+    # Without a tag there is nothing to publish; the trial run's packages hang on the run.
+    if: needs.version.outputs.approval == 'yes'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: One shared checksum file
+        run: |
+          set -euo pipefail
+          cd artifacts
+          # The jobs' individual files go out; one list is better than three that can drift apart.
+          rm -f ./*.sha256
+          sha256sum ./*.pkg ./*.msi ./*.mst | sed 's|\./||' > SHA256SUMS
+          cat SHA256SUMS
+
+      - name: Write the release notes
+        env:
+          TAG: ${{ github.ref_name }}
+          VERSION: ${{ needs.version.outputs.version }}
+          MAC_PACKAGE: ${{ needs.macos.outputs.package }}
+          MAC_SIGNED: ${{ needs.macos.outputs.signed }}
+          MAC_NOTARISED: ${{ needs.macos.outputs.notarised }}
+          WIN_PACKAGE: ${{ needs.windows.outputs.package }}
+          WIN_SIGNED: ${{ needs.windows.outputs.signed }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          if [ "$MAC_SIGNED" = "yes" ]; then
+            mac_sig="Developer ID Application + Installer"
+          else
+            mac_sig="**none** (ad hoc)"
+          fi
+          if [ "$MAC_NOTARISED" = "yes" ]; then
+            mac_not="notarised and stapled"
+          else
+            mac_not="**not notarised**"
+          fi
+          if [ "$WIN_SIGNED" = "yes" ]; then
+            win_sig="Authenticode, with a timestamp"
+          else
+            win_sig="**none**"
+          fi
+          # The backticks in the formats are Markdown for the release page, not a substitution.
+          # shellcheck disable=SC2016
+          {
+            printf 'elasticdms folder client %s — a reading mirror of the archive in Finder and in File Explorer.\n\n' "$VERSION"
+            printf '## What lies here\n\n'
+            printf '| Artefact | Platform | Signature | Notarisation |\n'
+            printf '|---|---|---|---|\n'
+            printf '| `%s` | macOS 13+, universal | %s | %s |\n' "$MAC_PACKAGE" "$mac_sig" "$mac_not"
+            printf '| `%s` | Windows 10 1709+, x64 | %s | — |\n' "$WIN_PACKAGE" "$win_sig"
+            printf '| `SHA256SUMS` | — | — | — |\n\n'
+            if [ "$MAC_SIGNED" != "yes" ] || [ "$WIN_SIGNED" != "yes" ]; then
+              printf '> **Careful:** what carries “none” as a signature above is a test specimen and does not belong with users.\n'
+              printf '> Gatekeeper refuses an ad-hoc signed app as soon as it comes over a browser or a network drive, and no MDM pre-approval takes hold (it addresses apps as “bundle ID (team ID)”); SmartScreen warns about an unsigned MSI.\n\n'
+            fi
+            printf '## After the installation\n\n'
+            printf '* **macOS:** *System Settings → General → Login Items and Extensions → File Providers → switch “elasticdms” on.* Without that step the folder stays empty; macOS demands it from version 26 on, and no installer can take it off the user (ADR-D05).\n'
+            printf '* **Windows:** the client registers its sync root itself at the first sign-in (`CfRegisterSyncRoot`, ADR-D06); the uninstall deregisters it again.\n\n'
+            printf '## Where to read on\n\n'
+            printf 'The way from the package to a running folder stands in [docs/DELIVERY.md](https://github.com/%s/blob/%s/docs/DELIVERY.md).\n\n' \
+              "$REPO" "$TAG"
+            printf 'Checksums of all files: `SHA256SUMS` (`sha256sum -c SHA256SUMS`).\n'
+          } > release-notes.md
+          cat release-notes.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Create the release as a draft
+        env:
+          # gh is on every image; this way the only job with contents: write runs no foreign action
+          # code.
+          GH_TOKEN: ${{ github.token }}
+          # Without this `gh` asks git which repository it is in — and this job checks nothing out,
+          # because it only needs the artefacts of the other two. It then stops with "fatal: not a
+          # git repository", after both packages have been built, signed and notarised. GH_REPO is
+          # the answer that costs no clone.
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          # --draft: a human sees the artefacts before the customer does.
+          # --verify-tag: without the tag in the repository, abort rather than invent one.
+          # --generate-notes appends the generated list of changes below our own text.
+          gh release create "$TAG" \
+            --draft \
+            --verify-tag \
+            --title "elasticdms folder client $TAG" \
+            --notes-file release-notes.md \
+            --generate-notes \
+            artifacts/*.pkg artifacts/*.msi artifacts/*.mst artifacts/SHA256SUMS

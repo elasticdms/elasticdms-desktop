@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Das Anmeldeobjekt: /Library/LaunchAgents/de.elasticdms.folderclient.plist.
+
+  WARUM HIER und nicht ueber SMAppService: `SMAppService.agent(plistName:)` registriert laut
+  Apple-DTS nur fuer den aktuellen Nutzer („The API has no way to install an agent for all
+  users") und verlangt eine echte Apple-Signatur — mit Ad-hoc-Signatur schlaegt die Registrierung
+  fehl. Fuer eine MDM-Verteilung auf verwaltete Geraete ist eine vom Paket gelegte Plist in
+  /Library/LaunchAgents der richtige Hebel: sie gilt fuer jeden Nutzer des Geraets, auch fuer
+  kuenftige. Unter macOS 13+ faellt sie ins Background Task Management; der Nutzer sieht eine
+  Mitteilung und den Eintrag unter „Systemeinstellungen → Allgemein → Anmeldeobjekte und
+  Erweiterungen". Das MDM-Payload com.apple.servicemanagement (Geraetekanal, RuleType
+  BundleIdentifier oder TeamIdentifier) nimmt ihm die Zustimmung ab — aber nur bei einer Signatur
+  mit Team-ID, also nicht bei einem Ad-hoc-Bau (packaging/macos/README.md).
+
+  Jeder Schluessel hat seinen Grund:
+
+  * Label — muss dem Dateinamen entsprechen; danach spricht `launchctl` die Aufgabe an
+    (gui/<uid>/de.elasticdms.folderclient).
+  * ProgramArguments — der feste Pfad nach /Applications. Das Paket setzt
+    BundleIsRelocatable=false, damit das Buendel genau dort landet und dieser Pfad stimmt.
+  * RunAtLoad — beim Anmelden starten. Das ist der ganze Zweck.
+  * KEIN KeepAlive. Ohne EDMS_API_BASE, EDMS_AUTH_BASE und EDMS_APP_BASE bricht elasticdms den
+    Start mit einem Satz ab, der die fehlende Variable nennt (crates/app/src/setup.rs).
+    Mit KeepAlive entstuende daraus eine Startschleife alle zehn Sekunden, die niemand sieht und
+    die nichts besser macht. Ein einmaliger Fehlstart steht im Protokoll und ist zu beheben.
+  * LimitLoadToSessionType Aqua — elasticdms ist ein Menueleistenprogramm (LSUIElement, ADR-D07).
+    In einer SSH- oder Hintergrundsitzung haette es nichts zu zeigen und nichts zu tun.
+  * ProcessType Interactive — die Aufgabe bedient einen Menschen; macOS soll sie nicht wie einen
+    Stapelverarbeiter drosseln.
+  * AssociatedBundleIdentifiers — ohne diesen Schluessel steht in den Systemeinstellungen unter
+    „Anmeldeobjekte" nur das nackte Etikett. Mit ihm ordnet macOS den Eintrag der App zu und
+    zeigt Namen und Symbol; ausserdem adressiert das MDM-Payload com.apple.servicemanagement die
+    Regel ueber genau diese Buendelkennung.
+  * KEINE StandardOutPath/StandardErrorPath. Ein erfundener Protokollpfad im Heimverzeichnis
+    waere eine Datei, die niemand aufraeumt. Warum ein Start scheiterte, sagt
+    `launchctl print gui/$(id -u)/de.elasticdms.folderclient` bzw. der Programmstart von Hand im
+    Terminal.
+
+  EnvironmentVariables steht hier bewusst NICHT. Die drei Pflichtvariablen nennen den Mandanten;
+  eine falsche Vorgabe hiesse „falscher Mandant, und alles funktioniert". scripts/macos-package.sh
+  traegt sie ein, wenn sie beim Bauen gesetzt sind — sonst bleibt der Schluessel weg, und die
+  Betreiberin setzt ihn per MDM nach. Die Gestalt waere:
+
+      <key>EnvironmentVariables</key>
+      <dict>
+          <key>EDMS_API_BASE</key>  <string>https://api.example.de</string>
+          <key>EDMS_AUTH_BASE</key> <string>https://auth.example.de</string>
+          <key>EDMS_APP_BASE</key>  <string>https://app.example.de</string>
+      </dict>
+-->
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>de.elasticdms.folderclient</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>/Applications/elasticdms.app/Contents/MacOS/elasticdms</string>
+	</array>
+	<key>RunAtLoad</key>
+	<true/>
+	<key>LimitLoadToSessionType</key>
+	<string>Aqua</string>
+	<key>ProcessType</key>
+	<string>Interactive</string>
+	<key>AssociatedBundleIdentifiers</key>
+	<array>
+		<string>de.elasticdms.folderclient</string>
+	</array>
+</dict>
+</plist>

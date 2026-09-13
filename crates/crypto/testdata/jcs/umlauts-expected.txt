@@ -1,0 +1,1 @@
+{"Aktenzeichen":"AZ 4711/2026 – Müller & Söhne","Straße":"Königstraße 5","Z":"Grossbuchstabe","Zürich":"Grüße aus Zürich","e":"ASCII e","Äpfel":["Äpfel","äpfel","Äpfel"],"Ärger":"ärgerlich","Öl":"Ölwechsel","ß":"Eszett","é":"e mit Akut","€":"Euro","𝄞":"Notenschluessel, ein Ersatzzeichenpaar","￿":"letzte Stelle der BMP"}

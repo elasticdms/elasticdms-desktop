@@ -1,0 +1,15 @@
+{
+  "Straße": "Königstraße 5",
+  "Ärger": "ärgerlich",
+  "Zürich": "Grüße aus Zürich",
+  "Öl": "Ölwechsel",
+  "é": "e mit Akut",
+  "e": "ASCII e",
+  "Äpfel": ["Äpfel", "äpfel", "Äpfel"],
+  "ß": "Eszett",
+  "€": "Euro",
+  "\ud834\udd1e": "Notenschluessel, ein Ersatzzeichenpaar",
+  "\uffff": "letzte Stelle der BMP",
+  "Z": "Grossbuchstabe",
+  "Aktenzeichen": "AZ 4711/2026 – Müller & Söhne"
+}

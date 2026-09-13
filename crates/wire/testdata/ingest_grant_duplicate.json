@@ -1,0 +1,10 @@
+{
+  "uploadId": "upl_01JKD8H0J2K4M6N8P0Q2R4S6T8",
+  "uploadUrl": "https://api.elasticdms.io/v1/ingest-uploads/upl_01JKD8H0J2K4M6N8P0Q2R4S6T8/content",
+  "duplicateOf": {
+    "documentId": "doc_01JK4R7ZQ8M3N5P6T9V0WXYZAB",
+    "title": "Rechnung 2026-0412",
+    "createdAt": "2026-03-14T09:12:44Z"
+  },
+  "expiresAt": "2026-09-11T08:00:00Z"
+}

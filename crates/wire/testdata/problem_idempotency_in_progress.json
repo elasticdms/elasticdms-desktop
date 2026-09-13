@@ -1,0 +1,6 @@
+{
+  "type": "https://errors.elasticdms.io/idempotency-in-progress",
+  "title": "idempotency-in-progress",
+  "status": 409,
+  "detail": "Ein Aufruf mit demselben Idempotency-Key wird gerade verarbeitet."
+}

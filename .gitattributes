@@ -1,0 +1,13 @@
+# Line endings, pinned for every checkout.
+#
+# WHY THIS FILE EXISTS: the goldens of this repository are compared byte for byte — the JCS
+# transcript, the wire fixtures, the JSON blocks of the contract document. A checkout that
+# translates line endings changes exactly those bytes. `core.autocrlf=true` is the default on
+# GitHub's Windows runners, so the corruption appeared on one platform only, after a ten-minute
+# build, as a diff whose difference was invisible: `…"}` against `…"}\r`.
+#
+# LF in the repository, LF in the working tree, on every machine.
+* text=auto eol=lf
+
+# `text=auto` already recognises the images by their content; this says it out loud.
+*.png binary

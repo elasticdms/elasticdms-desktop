@@ -1,0 +1,5 @@
+{
+  "error": "invalid_grant",
+  "error_description": "Dieses Refresh-Token wurde bereits eingelöst; die Token-Familie ist widerrufen.",
+  "error_uri": "https://errors.elasticdms.io/refresh-token-reuse"
+}

@@ -1,0 +1,1 @@
+{"apostroph":"it's","gross":"ÄÖÜ","html":"<b>Fett</b> & \"zitiert\"","loeschzeichen":"","maskiert":"<script>alert(1)</script> &amp;","schraegstrich":"a/b/c","steuer":"\u0007\u000b\u001e","zeilentrenner":"a b c"}

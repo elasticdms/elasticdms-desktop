@@ -1,0 +1,16 @@
+{
+  "items": [
+    {
+      "caseId": "cas_01JKA7M2Q9R4S6T8V0W1X3Y5Z7",
+      "title": "Sulzer Pumpen GmbH – Rahmenvertrag 2026",
+      "updatedAt": "2026-09-10T16:04:11+02:00"
+    },
+    {
+      "caseId": "cas_01JKA8N3R0S5T7V9W2X4Y6Z8A1",
+      "title": "Bauvorhaben Rothenbaumchaussee 12",
+      "updatedAt": "2026-09-09T08:21:03Z"
+    }
+  ],
+  "nextCursor": "eyJ0IjoxNzcyNDQ4MjkyfQ",
+  "hasMore": true
+}

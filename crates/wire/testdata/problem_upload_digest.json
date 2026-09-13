@@ -1,0 +1,14 @@
+{
+  "type": "https://errors.elasticdms.io/ingest-content-digest-mismatch",
+  "title": "Prüfsumme weicht ab",
+  "status": 422,
+  "detail": "Der serverseitig gerechnete sha-256-Wert der übertragenen Bytes weicht vom angekündigten ab.",
+  "instance": "/v1/ingest-uploads/upl_01JKD8H0J2K4M6N8P0Q2R4S6T8/content",
+  "errors": [
+    {
+      "field": "sha256",
+      "code": "mismatch",
+      "expected": "sha256:189a92c221f3d69b68a569df83d04a28e881b62cbefc3b6c50a441711c5a1721"
+    }
+  ]
+}

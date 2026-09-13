@@ -1,0 +1,8 @@
+{
+  "type": "https://errors.elasticdms.io/invalid-cursor",
+  "title": "Cursor unlesbar",
+  "status": 400,
+  "detail": "Der übergebene cursor gehört nicht zu dieser Liste oder ist nicht mehr gültig. Die Liste ist von vorn zu lesen.",
+  "instance": "/v1/mirror/archives/arc_01JKA9P4S6T8V0W2X4Y6Z8A1B3/cases/cas_01JKA7M2Q9R4S6T8V0W1X3Y5Z7/documents",
+  "traceId": "01JKC4D6E8F0G2H4J6K8M0N2P4"
+}

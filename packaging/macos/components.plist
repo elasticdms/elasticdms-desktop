@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Die Bestandteilsliste fuer pkgbuild: was elasticdms.app im Paket ist und wie der Installer
+  damit umgehen soll.
+
+  Erzeugt mit `pkgbuild` im Analysemodus (Schalter `analyze` samt `root target/pkg/root-app`),
+  danach an zwei Stellen von Hand geaendert. Genau diese zwei Stellen sind der Grund, warum die
+  Liste im Repo steht und nicht im Bauablauf erzeugt wird:
+
+  * BundleIsRelocatable — der Analysemodus setzt hier `true` (gemessen). Der Installer suchte dann
+    ueber die Launch-Services-Datenbank nach einer vorhandenen Kopie mit derselben Buendelkennung
+    und schriebe DORTHIN statt nach /Applications. Eine Entwicklerkopie in ~/Applications oder auf
+    dem Schreibtisch finge jede Aktualisierung ab; /Applications/elasticdms.app bliebe alt oder
+    entstuende nie. Das faellt erst am leeren Finder-Ordner auf, und dann sucht man lange.
+  * BundleIsVersionChecked — `false`, damit der Installer die App immer schreibt und nicht eine
+    zufaellig hoehere CFBundleVersion an einem anderen Ort fuer neuer haelt. Ueber Aktualisierung
+    gegen Ruecksetzung entscheidet die Paketfassung, nicht ein Fund im Dateisystem.
+
+  Die eingebettete .appex erkennt der Analysemodus selbsttaetig als ChildBundle; ohne diesen
+  Eintrag behandelte pkgbuild sie als blossen Inhalt der App. scripts/macos-package.sh prueft bei
+  jedem Bau, ob diese Liste noch zum Buendel passt, und bricht ab, wenn nicht.
+
+  Uebrigens: XML-Kommentare vertragen keine zwei aufeinanderfolgenden Bindestriche (XML 1.0 §2.5),
+  weshalb die Schalter oben ohne ihr Praefix stehen. Apples Plist-Parser nimmt sie trotzdem an:
+  `plutil -lint` sagt OK, wo `xmllint` einen Parserfehler meldet. Wer diese Datei anfasst, prueft
+  sie mit BEIDEN. Dieselbe Regel steht in packaging/windows/elasticdms.wxs.
+-->
+<plist version="1.0">
+<array>
+	<dict>
+		<key>BundleHasStrictIdentifier</key>
+		<true/>
+		<key>BundleIsRelocatable</key>
+		<false/>
+		<key>BundleIsVersionChecked</key>
+		<false/>
+		<key>BundleOverwriteAction</key>
+		<string>upgrade</string>
+		<key>ChildBundles</key>
+		<array>
+			<dict>
+				<key>BundleOverwriteAction</key>
+				<string></string>
+				<key>RootRelativeBundlePath</key>
+				<string>elasticdms.app/Contents/PlugIns/elasticdms-fileprovider.appex</string>
+			</dict>
+		</array>
+		<key>RootRelativeBundlePath</key>
+		<string>elasticdms.app</string>
+	</dict>
+</array>
+</plist>

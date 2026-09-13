@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Info.plist der App elasticdms.app.
+
+  Jeder Schluessel hier hat einen Grund, und keiner steht hier zweimal — @VERSION@ setzt
+  scripts/macos-bundle.sh aus [workspace.package].version, damit die Fassung ihre einzige
+  Wahrheit in Cargo.toml behaelt.
+
+  * CFBundleIdentifier — de.elasticdms.folderclient. Darunter liegt auch der Ordner mit der
+    Rendezvous-Datei (~/Library/Application Support/de.elasticdms.folderclient/bridge.json,
+    ADR-D05); die Erweiterung darf genau diesen Pfad lesen.
+  * LSUIElement — die App ist ein Menueleistenprogramm: kein Dock-Symbol, kein Fenster beim
+    Start. Ohne diesen Schluessel stuende elasticdms im Dock und im Programmwechsler, obwohl es
+    ausser dem Nutzungsprotokoll nichts zu zeigen hat (ADR-D07).
+  * LSMinimumSystemVersion 13.0 — NSFileProviderItem.contentPolicy gibt es ab macOS 13
+    (ADR-D05). Ohne die Regel „DownloadLazilyAndEvictOnRemoteUpdate" laedt das System eine
+    geaenderte Datei ungefragt neu, und jede Hydrierung ist ein Zugriff im Serverprotokoll.
+  * CFBundlePackageType APPL — eine Anwendung; die Erweiterung darunter traegt XPC!.
+-->
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>de</string>
+	<key>CFBundleDisplayName</key>
+	<string>elasticdms</string>
+	<key>CFBundleExecutable</key>
+	<string>elasticdms</string>
+	<key>CFBundleIdentifier</key>
+	<string>de.elasticdms.folderclient</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>elasticdms</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>@VERSION@</string>
+	<key>CFBundleVersion</key>
+	<string>@VERSION@</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>13.0</string>
+	<key>LSUIElement</key>
+	<true/>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<key>NSHumanReadableCopyright</key>
+	<string>elasticdms</string>
+</dict>
+</plist>

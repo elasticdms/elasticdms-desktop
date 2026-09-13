@@ -1,0 +1,31 @@
+# edms-core — the domain core of the folder client.
+#
+# Pure values and pure functions: no clock, no randomness, no network, no file system, no platform
+# API. Everything here is checkable without an operating system in milliseconds, and that is
+# exactly why every decision that can be taken without an operating system stands here.
+#
+# edms-i18n is the only crate below this one. The core builds the names and the hint file of the
+# mirror, and those are sentences the user reads; the language is passed **in**
+# (`namespace::root_entries(language)`), because reaching for the operating system's locale here
+# would be the platform API this crate does without.
+
+[package]
+name = "edms-core"
+description = "Domain core of the elasticdms folder client: identifiers, namespace, delivery, protocol"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+edms-i18n.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+unicode-normalization.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
+
+[lints]
+workspace = true

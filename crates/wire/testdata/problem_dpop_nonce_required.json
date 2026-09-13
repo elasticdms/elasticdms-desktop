@@ -1,0 +1,8 @@
+{
+  "type": "https://errors.elasticdms.io/dpop-nonce-required",
+  "title": "DPoP-Nonce erforderlich",
+  "status": 401,
+  "detail": "Der Proof muss die im Header DPoP-Nonce gelieferte Nonce enthalten.",
+  "instance": "/v1/folders",
+  "traceId": "01JB8Z5K3M4N6P7Q8R9S0T1U2V"
+}

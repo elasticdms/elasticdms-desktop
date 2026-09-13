@@ -1,0 +1,6 @@
+{
+  "type": "https://errors.elasticdms.io/client-version-too-old",
+  "title": "client-version-too-old",
+  "status": 426,
+  "detail": "Diese Anwendungsversion wird nicht mehr bedient."
+}

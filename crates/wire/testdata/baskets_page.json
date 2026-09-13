@@ -1,0 +1,14 @@
+{
+  "items": [
+    {
+      "basketId": "bsk_01JKC2R6V8W0X2Y4Z6A8B1C3D5",
+      "title": "Briefkorb Buchhaltung"
+    },
+    {
+      "basketId": "bsk_01JKD3S7W9X1Y3Z5A7B9C2D4E6",
+      "title": "Scanner Empfang"
+    }
+  ],
+  "nextCursor": null,
+  "hasMore": false
+}

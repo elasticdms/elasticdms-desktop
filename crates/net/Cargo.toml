@@ -1,0 +1,53 @@
+# edms-net — everything HTTP, and HTTP only here.
+#
+# reqwest appears in no public signature; to the outside there are Server, ServerAccess and
+# ApiResult. DPoP with a mandatory nonce, exactly one retry (03 §6.0.5, contract test T9).
+#
+# reqwest features, each with its reason:
+# - rustls: TLS without OpenSSL and without native-tls. A client that builds against the system
+#   library breaks on the next Windows update or the next macOS jump; rustls brings its
+#   implementation with it and checks the chain over the platform store
+#   (rustls-platform-verifier), so that a corporate root from the domain keeps counting.
+# - form: the OAuth endpoints speak application/x-www-form-urlencoded (RFC 6749 §4.4.2).
+# - query: cursor and limit go out as query parameters (03 §6.0.8).
+# - stream: the content fetch writes into a sink piece by piece, and the inbox folder uploads a
+#   file without pulling it into memory first (a receipt can be 200 MB).
+# - http2: a long poll and a content fetch would otherwise run over two connections instead of two
+#   streams of one.
+
+[package]
+name = "edms-net"
+description = "HTTP access of the folder client: DPoP, sign-in, namespace, content, delivery"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+edms-core.workspace = true
+edms-crypto.workspace = true
+edms-wire.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+tokio = { workspace = true, features = ["time", "io-util", "fs"] }
+reqwest = { workspace = true, features = ["rustls", "form", "query", "stream", "http2"] }
+
+[dev-dependencies]
+# The forge supplies test keys; without it every test would have to build its own ES256 key — four
+# copies of the same thing.
+edms-crypto = { workspace = true, features = ["forge"] }
+# The test rig of this crate: a tiny HTTP server that records the headers of every request. It
+# stands in tests/, never in src/ — rule R2 ("HTTP server only in the mock") checks production
+# files only, and a listening port in production code would be exactly what ADR-D04 rules out.
+axum.workspace = true
+# The honest way: the contract-faithful server mock. It speaks the same contract and really does
+# check every DPoP proof — which the test rig cannot, because it lies on request. The architecture
+# rules expressly permit it as a development dependency of every crate.
+edms-mock.workspace = true
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "net", "sync", "time"] }
+
+[lints]
+workspace = true

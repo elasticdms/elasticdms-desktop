@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Info.plist der Erweiterung elasticdms-fileprovider.appex.
+
+  Das ist die Datei, an der eine File-Provider-Erweiterung am haeufigsten still scheitert: das
+  System verwirft eine unpassende Erweiterung ohne Fehlermeldung, und der Ordner im Finder bleibt
+  einfach leer. Deshalb steht hinter jedem Schluessel sein Grund (gemessen auf macOS 26.6,
+  ADR-D05).
+
+  * CFBundlePackageType XPC! — eine Erweiterung ist kein APPL. Mit APPL nimmt PlugInKit das
+    Buendel nicht an; Apples eigene PhotosFileProvider.appex traegt ebenfalls XPC!.
+  * CFBundleIdentifier de.elasticdms.folderclient.fileprovider — muss unter der Kennung der App
+    liegen, sonst gilt die Erweiterung nicht als deren Bestandteil.
+  * NSExtensionPointIdentifier com.apple.fileprovider-nonui — der Erweiterungspunkt fuer den
+    Anbieter selbst. „nonui" heisst: ohne eigene Oberflaeche; die waere eine zweite Erweiterung
+    (FileProviderUI), die es in v1 nicht gibt (ADR-D05, „Kein Anheften in v1").
+  * NSExtensionPrincipalClass EdmsFileProvider — den Namen loest PlugInKit ueber die
+    Objective-C-Laufzeit auf, bevor Rust laeuft. Er steht doppelt, hier und in
+    crates/fileprovider/src/extension.rs (PRINCIPAL_CLASS); macos-bundle.sh haelt beide
+    zusammen, denn ein Tippfehler faellt sonst erst am leeren Finder-Ordner auf.
+  * NSExtensionFileProviderSupportsEnumeration true — ohne diesen Schluessel fragt das System
+    nie einen Aufzaehler an, und der Spiegel bliebe leer.
+  * KEIN NSExtensionFileProviderDocumentGroup — eine App Group braucht auf macOS eine Team-ID
+    als Praefix, und ad hoc signierte Bauten haben keine. Steht der Schluessel da und passt
+    nicht, verwirft das System die Erweiterung ohne sichtbaren Fehler (ADR-D05, Messung 3).
+  * LSMinimumSystemVersion 13.0 — wie bei der App: contentPolicy gibt es ab macOS 13.
+-->
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>de</string>
+	<key>CFBundleDisplayName</key>
+	<string>elasticdms</string>
+	<key>CFBundleExecutable</key>
+	<string>elasticdms-fileprovider</string>
+	<key>CFBundleIdentifier</key>
+	<string>de.elasticdms.folderclient.fileprovider</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>elasticdms-fileprovider</string>
+	<key>CFBundlePackageType</key>
+	<string>XPC!</string>
+	<key>CFBundleShortVersionString</key>
+	<string>@VERSION@</string>
+	<key>CFBundleVersion</key>
+	<string>@VERSION@</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>13.0</string>
+	<key>NSExtension</key>
+	<dict>
+		<key>NSExtensionFileProviderSupportsEnumeration</key>
+		<true/>
+		<key>NSExtensionPointIdentifier</key>
+		<string>com.apple.fileprovider-nonui</string>
+		<key>NSExtensionPrincipalClass</key>
+		<string>EdmsFileProvider</string>
+	</dict>
+</dict>
+</plist>

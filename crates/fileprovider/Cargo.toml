@@ -1,0 +1,55 @@
+# edms-fileprovider — the macOS platform layer.
+#
+# Two parts: the library (domain management for the app: NSFileProviderManager) and the program
+# elasticdms-fileprovider, which is linked as the .appex executable with entry point
+# _NSExtensionMain. The principal class is an objc2 class (define_class!) that is registered at
+# load time — otherwise objc2 registers it only on first access, and PlugInKit would not find it
+# (measured, see docs/adr/ADR-D05).
+#
+# The principal class lives in the library, not in the program: only that way can it be tested with
+# `cargo test` in the same process. The program therefore has `test = false` — build.rs sets its
+# entry point to _NSExtensionMain, and a test binary with that entry point would start
+# NSExtensionMain instead of the tests.
+
+[package]
+name = "edms-fileprovider"
+description = "macOS platform layer: File Provider extension in Rust and domain management"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+build = "build.rs"
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "elasticdms-fileprovider"
+path = "src/bin/elasticdms-fileprovider.rs"
+test = false
+bench = false
+
+[dependencies]
+edms-core.workspace = true
+edms-bridge.workspace = true
+# The sentences Finder shows, and the Mac's language: the extension is a process of its own and
+# resolves both for itself (src/locale.rs).
+edms-i18n.workspace = true
+thiserror.workspace = true
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2.workspace = true
+objc2-foundation.workspace = true
+# contentType (UTType) is mandatory on macOS (NSFileProviderItem.h) and hangs off this feature,
+# which is not among the defaults of objc2-file-provider.
+objc2-file-provider = { workspace = true, features = ["objc2-uniform-type-identifiers"] }
+objc2-uniform-type-identifiers.workspace = true
+block2.workspace = true
+sha2.workspace = true
+tracing.workspace = true
+# getpwuid_r: inside the sandbox $HOME is the container, not the user's home directory.
+libc = "0.2.189"
+
+[lints]
+workspace = true

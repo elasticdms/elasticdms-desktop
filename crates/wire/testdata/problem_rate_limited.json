@@ -1,0 +1,6 @@
+{
+  "type": "https://errors.elasticdms.io/rate-limited",
+  "title": "rate-limited",
+  "status": 429,
+  "detail": "Zu viele Anfragen."
+}

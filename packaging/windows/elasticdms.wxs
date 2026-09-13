@@ -1,0 +1,336 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<!--
+  elasticdms.wxs — the Windows installation package (MSI), WiX v4/v5 schema.
+
+  ═══════════════════════════════════════════════════════════════════════════════════════════
+  NOT RUN ON WINDOWS. This file was written on a Mac and checked there only as XML (xmllint).
+  No `wix build`, no `msiexec`, no `signtool` has run; the ICE checks of the Windows Installer
+  run on Windows first. Expect rework at the first build — the likeliest places stand in
+  README.md.
+
+  By the way: XML comments do not tolerate two consecutive hyphens. Where command line switches
+  are mentioned below they therefore appear without their prefix; what counts is the attribute
+  underneath.
+  ═══════════════════════════════════════════════════════════════════════════════════════════
+
+  WHY MSI AND NOT INNO SETUP OR MSIX
+  The operator deploys over Intune AND over GPO. GPO software installation takes `.msi` only; an
+  Inno Setup `.exe` could be delivered there through logon scripts alone — without assignment,
+  without uninstallation, without inventory. Intune takes both, but for an MSI it runs the
+  uninstallation itself as `msiexec /x {ProductCode}` and reads ProductCode and version for
+  detection. MSIX/sparse is out twice over: ADR-D06 §7 forbids the WinRT registration path, and a
+  sparse package does NOT bring the automatic sync root deregistration with it (that applies only
+  to roots from `StorageProviderSyncRootManager.Register`); it would only buy a certificate
+  obligation.
+
+  WHICH WiX VERSION
+  This file uses the v4 schema, which WiX 4, 5, 6 and 7 have in common (`Package` instead of
+  `Product`, `Condition` as an attribute, `FileRef` instead of `FileKey`, `StandardDirectory`). It
+  builds with every one of those versions. The WiX 3.14 preinstalled on `windows-2025` does NOT
+  compile it. Which version is fetched stands in exactly one place: `WIX_VERSION` in
+  `scripts/windows-package.ps1` (default 5.0.2). That is a legal question, not a technical one: up
+  to 5.0.2 the NuGet package is under MS-RL, from 6.0.0 it carries OSMFEULA.txt with
+  `requireLicenseAcceptance=true` — an "Open Source Maintenance Fee" for users above 10,000 US$
+  annual revenue, and therefore paid use for a limited company. Whoever takes 6 or 7 decides that
+  deliberately (README.md, section "The version of WiX is a legal question").
+
+  TWO LANGUAGES, ONE PACKAGE AND A TRANSFORM BESIDE IT
+  The four sentences a human reads no longer stand in this file. They stand in de-DE.wxl and
+  en-US.wxl and are referenced here by name; `wix build` resolves every !(loc.…) before it writes
+  the database, so a key that only one of the two catalogues knows is a WIX0102 at build time. That
+  much was MEASURED on the development Mac (README.md, section "What can be proven without
+  Windows").
+
+  This file is built once per language. The first language becomes the MSI, every further one
+  becomes a language transform (.mst) beside it. WHICH of the two shapes — two MSIs or one MSI plus
+  a transform — costs the administrator less is decided, with the price of each, in
+  scripts\windows-package.ps1 at $Cultures. Nothing of that decision is visible here: this file
+  only has to build once per language for it, and it does.
+
+  What is fixed here is the Codepage, 1252 for both catalogues. A language outside Latin-1 (932 for
+  Japanese) may NOT be a transform on this package: a transform that changes the code page is an
+  error condition of the Windows Installer which the applying side has to suppress by hand, and a
+  suppressed error is not a localisation. Such a language gets a package of its own.
+
+  THE GUIDs — ROLLED ONCE, NEVER CHANGED AGAIN
+  The same discipline as `PROVIDER_GUID` in `crates/cfapi/src/sync_root.rs`: a changed GUID means
+  "another product" or "another component" to Windows, and the old one stays behind as a corpse.
+
+  GUID                                   What for              Consequence of a change
+  ====================================== ===================== =======================================
+  92B92D26-B56F-4151-95BC-EA80102776C4   UpgradeCode           MajorUpgrade no longer finds the old
+                                                               version; both stand side by side in
+                                                               the program list.
+  4DCB2E4C-4EFA-48AC-A677-A7FFC39501FB   Component Program     The old elasticdms.exe is no longer
+                                                               counted on uninstallation.
+  3E01A719-B97E-4705-BE78-2FC3AF77E67C   Component Autostart   The old HKLM Run value stays behind
+                                                               after uninstallation.
+  7C5D0A83-16F2-4B1E-9E40-2B0B4E5F1A55   Component Environment The old EDMS variables stay behind
+                                                               after uninstallation.
+
+  The ProductCode is deliberately NOT fixed: it is rolled anew per build, and that is precisely
+  what `MajorUpgrade` demands. Intune reads it out of the MSI for detection and for the
+  uninstallation command. Who rolls it moved with the second language — see the guard below.
+
+  THE LIFE CYCLE OF THE SYNC ROOT IS THE CORE OF THIS FILE
+  The client registers its root with Win32 `CfRegisterSyncRoot` (ADR-D06 §7, unpackaged). Windows
+  remembers roots per volume; one left behind jams every later installation. Hence the action
+  `UnregisterSyncRoots` below — and hence it is NOT the only countermeasure: the client has to be
+  allowed to take over an orphaned root of its own (open point in README.md), otherwise one machine
+  that was switched off during the uninstallation is enough to stall every later installation.
+-->
+
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
+
+  <!--
+    Two values come from outside so that there is only one truth for each: the version from
+    `[workspace.package] version` and the directory of the built `.exe`. If one is missing the
+    build stops with a whole sentence instead of an empty attribute. A third, the ProductCode,
+    follows below — it has a default and therefore no error.
+
+    The names are those the build script passes. They are checked by a test
+    (`crates/architecture-rules/tests/scripts.rs`), because a renamed variable fails nowhere else
+    than on a Windows runner after a ten-minute build.
+  -->
+  <?ifndef Version?>
+    <?error The version is missing. Call: wix build -d Version=0.1.0 -d BinDir=... ; scripts\windows-package.ps1 sets both itself from Cargo.toml.?>
+  <?endif?>
+  <?ifndef BinDir?>
+    <?error The directory holding elasticdms.exe is missing. Call: wix build -d BinDir=target\x86_64-pc-windows-msvc\release ...?>
+  <?endif?>
+
+  <!--
+    The ProductCode, unlike the two above, has a default: by hand `wix` rolls it itself, which is
+    what the star means. The build script overrides it, and it has to.
+
+    WHY: the language transform is the difference between two builds of this file, one per
+    catalogue. A difference that also moved the ProductCode would not be a language transform but
+    two products — two rows in Programs and Features, two detection rules in Intune, and a
+    transform the Windows Installer refuses because its validation compares the product it was cut
+    from. So the script rolls ONE GUID per run and hands the same one to every language. Per build a
+    new one, exactly as before; per language the same one.
+  -->
+  <?ifndef ProductCode?>
+    <?define ProductCode = *?>
+  <?endif?>
+
+  <Package
+      Name="elasticdms"
+      Manufacturer="Lotzer Digital UG (haftungsbeschränkt)"
+      Version="$(var.Version)"
+      UpgradeCode="92B92D26-B56F-4151-95BC-EA80102776C4"
+      ProductCode="$(var.ProductCode)"
+      Scope="perMachine"
+      Language="!(loc.PackageLanguage)"
+      Codepage="1252"
+      InstallerVersion="500"
+      Compressed="yes">
+
+    <!--
+      AllowSameVersionUpgrades, because MSI evaluates only three version fields (at most
+      255.255.65535) and ignores the fourth: two builds of the same Cargo version are the same
+      version to MSI, and without this switch MajorUpgrade would refuse every reinstallation after
+      a rebuild.
+
+      The sentence a human reads on a downgrade stands in the two .wxl catalogues, like every other
+      end user text of this product.
+    -->
+    <MajorUpgrade
+        AllowSameVersionUpgrades="yes"
+        DowngradeErrorMessage="!(loc.DowngradeBlocked)" />
+
+    <MediaTemplate EmbedCab="yes" />
+
+    <!--
+      The client is x64 only (target x86_64-pc-windows-msvc); the package is built with
+      `-arch x64`. Without this condition a 32-bit Windows would get the installer's standard
+      message instead of a sentence that says what is missing.
+
+      NO condition on the Windows version: `VersionNT` reads 603 on every Windows from 8.1 on, and
+      the installer does not see the build number (10.0.16299 for the Cloud Filter API). The check
+      therefore belongs in the client (`edms_cfapi::platform_available`), which already does it —
+      there with a sentence that names the reason.
+    -->
+    <Launch
+        Condition="VersionNT64"
+        Message="!(loc.NeedsSixtyFourBitWindows)" />
+
+    <!-- There is only one feature set; a "Change" button would lead nowhere. -->
+    <Property Id="ARPNOMODIFY" Value="1" />
+    <Property Id="ARPCOMMENTS" Value="!(loc.ProductComments)" />
+
+    <!--
+      The three mandatory variables of the client (README, section Configuration). They are public
+      MSI properties (upper case) and can therefore be set on the command line:
+
+        msiexec /i elasticdms-0.1.0.msi /qn ^
+          EDMS_API_BASE=https://api.elasticdms.io ^
+          EDMS_AUTH_BASE=https://auth.elasticdms.io ^
+          EDMS_APP_BASE=https://app.elasticdms.io
+
+      `Secure="yes"` enters them in SecureCustomProperties; without that they would not reach the
+      deferred actions of a per-machine installation. Whoever prefers to set the variables over GPO
+      preferences or Intune leaves them out — then the component "Environment" does not come into
+      being and the client takes the values from the environment it finds.
+    -->
+    <Property Id="EDMS_API_BASE" Secure="yes" />
+    <Property Id="EDMS_AUTH_BASE" Secure="yes" />
+    <Property Id="EDMS_APP_BASE" Secure="yes" />
+
+    <Feature Id="MainPart" Title="!(loc.FeatureTitle)" Level="1">
+      <ComponentGroupRef Id="ProgramParts" />
+    </Feature>
+
+    <!-- ProgramFiles64Folder, not ProgramFiles6432Folder: the client is x64 only. -->
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="elasticdms" />
+    </StandardDirectory>
+
+    <!--
+      First stop, then deregister: `CfUnregisterSyncRoot` fails with
+      ERROR_CLOUD_FILE_INVALID_REQUEST as long as a provider is CONNECTED to the root
+      (`CfConnectSyncRoot`). If elasticdms.exe is still running in any session, a root would stay
+      behind on every machine with a signed-in user.
+
+      ElevatedCloseMessage, because the uninstallation runs as SYSTEM under Intune and GPO and the
+      window message would otherwise not reach the user's session. TerminateProcess="0" ends the
+      process with exit code 0 if it does not react to the message; with the folder client that is
+      harmless: it writes nothing that an ending could tear apart (requirement 1, a reading
+      mirror), and the session lies in the keychain, not in memory.
+
+      NOT PROVEN: whether the message really reaches processes in OTHER sessions. If it does not,
+      the cleanup action reports the root as left behind (README.md, residual risk).
+    -->
+    <util:CloseApplication
+        Id="StopFolderClient"
+        Target="elasticdms.exe"
+        CloseMessage="yes"
+        ElevatedCloseMessage="yes"
+        TerminateProcess="0"
+        RebootPrompt="no" />
+
+    <!--
+      The cleanup action. `FileRef` points at the installed file (in WiX v4/v5 the attribute is no
+      longer called FileKey).
+
+      Execute="deferred" with Impersonate="no" means SYSTEM in session 0: no user profile, no HKCU
+      of the user, no keychain, no desktop. Impersonate="yes" would not help — it would imitate
+      whoever started `msiexec`, and under Intune, SCCM and GPO that is SYSTEM as well. There is no
+      MSI mechanism that runs from a per-machine uninstallation in the context of the signed-in
+      user. That is why the switch below is a pure command line mode which touches none of it
+      (crates/app/src/uninstall.rs).
+
+      This is possible because `CfUnregisterSyncRoot`, according to the documentation, requires
+      only WRITE_DATA or WRITE_DAC on the root folder — no user identity, no elevation. SYSTEM has
+      both in every profile, and that is why this single action clears ALL profiles instead of just
+      one.
+
+      Return="ignore", because a failed cleanup would otherwise make the product unremovable. The
+      price is named: a failure only shows up at the next installation. What stayed behind is
+      written by the switch to its output; with `msiexec /x ... /l*v` it stands in the log.
+    -->
+    <CustomAction
+        Id="UnregisterSyncRoots"
+        FileRef="ElasticdmsExe"
+        ExeCommand="--uninstall"
+        Execute="deferred"
+        Impersonate="no"
+        Return="ignore" />
+
+    <InstallExecuteSequence>
+      <!--
+        Before="RemoveFiles", because the .exe is gone afterwards.
+        REMOVE="ALL": only on a real uninstallation, not when single parts are removed.
+        NOT UPGRADINGPRODUCTCODE: on an update RemoveExistingProducts removes the old version —
+        there the root shall precisely NOT be deregistered and the mirror NOT deleted, the new
+        version takes over both.
+      -->
+      <Custom
+          Action="UnregisterSyncRoots"
+          Before="RemoveFiles"
+          Condition="REMOVE=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE" />
+    </InstallExecuteSequence>
+  </Package>
+
+  <Fragment>
+    <!--
+      The files are listed one by one, not harvested (no `heat`, no HarvestDirectory): a build over
+      the whole workspace also puts `edms-mock.exe` into the same directory, and the test rig may
+      never end up in a delivered artefact (README, crate layout). Whoever adds something here
+      decides to do so.
+    -->
+    <ComponentGroup Id="ProgramParts" Directory="INSTALLFOLDER">
+
+      <Component Id="Program" Guid="4DCB2E4C-4EFA-48AC-A677-A7FFC39501FB" Bitness="always64">
+        <File Id="ElasticdmsExe" Source="$(var.BinDir)\elasticdms.exe" KeyPath="yes" />
+      </Component>
+
+      <!--
+        Autostart per machine: one value under HKLM Run, all users, no Active Setup, no scheduled
+        task.
+
+        HKLM instead of HKCU: a per-machine package may not have an HKCU value as its KeyPath — at
+        installation time there is only one user, and every further one would trigger a self-repair
+        at their first sign-in (visible on a terminal server as a hang).
+
+        Deliberately HKLM Run and not a scheduled task: the value appears in Task Manager under
+        "Startup" and can be switched off by the user. For a READING mirror nothing speaks against
+        letting them; a scheduled task would be more robust, would demand an uninstallation action
+        of its own and would feel patronising. The startup folder under %ProgramData% would be out
+        anyway: no binding to the component, and within reach of folder redirection and OneDrive
+        profile backup.
+
+        The value disappears by itself on uninstallation — unlike everything the client writes at
+        runtime.
+      -->
+      <Component Id="Autostart" Guid="3E01A719-B97E-4705-BE78-2FC3AF77E67C" Bitness="always64">
+        <RegistryValue
+            Root="HKLM"
+            Key="SOFTWARE\Microsoft\Windows\CurrentVersion\Run"
+            Name="elasticdms"
+            Type="string"
+            Value="&quot;[INSTALLFOLDER]elasticdms.exe&quot;"
+            KeyPath="yes" />
+      </Component>
+
+      <!--
+        The three mandatory variables as system variables. Without them the client does not start
+        but writes a sentence to the error output naming the missing variable
+        (crates/app/src/setup.rs) — on a managed device nobody would see it.
+
+        System="yes": the machine, not the user. Explorer, and with it the autostart, inherits the
+        value at the next sign-in; a running Explorer does not see it (Windows distributes changed
+        system variables only to processes that listen for WM_SETTINGCHANGE). After a first
+        installation a sign-out and sign-in is therefore needed; with an Intune delivery before the
+        first sign-in that goes unnoticed.
+
+        Action="set" with Permanent="no": on uninstallation they disappear again.
+
+        The component only comes into being if all three values stand on the command line. The
+        KeyPath is a registry value because Environment rows cannot be one.
+      -->
+      <Component
+          Id="Environment"
+          Guid="7C5D0A83-16F2-4B1E-9E40-2B0B4E5F1A55"
+          Bitness="always64"
+          Condition="EDMS_API_BASE AND EDMS_AUTH_BASE AND EDMS_APP_BASE">
+        <RegistryValue
+            Root="HKLM"
+            Key="SOFTWARE\Lotzer Digital\elasticdms"
+            Name="EnvironmentSet"
+            Type="integer"
+            Value="1"
+            KeyPath="yes" />
+        <Environment Id="ApiBase" Name="EDMS_API_BASE" Value="[EDMS_API_BASE]"
+                     Action="set" Part="all" System="yes" Permanent="no" />
+        <Environment Id="AuthBase" Name="EDMS_AUTH_BASE" Value="[EDMS_AUTH_BASE]"
+                     Action="set" Part="all" System="yes" Permanent="no" />
+        <Environment Id="AppBase" Name="EDMS_APP_BASE" Value="[EDMS_APP_BASE]"
+                     Action="set" Part="all" System="yes" Permanent="no" />
+      </Component>
+
+    </ComponentGroup>
+  </Fragment>
+</Wix>

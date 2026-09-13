@@ -1,0 +1,38 @@
+# edms-crypto — the only place with cryptography.
+#
+# JCS (RFC 8785), ES256, DPoP proofs (RFC 9449), client assertion (RFC 7523), JWK thumbprint
+# (RFC 7638), anchor fingerprint (geraete-auth §5.3), checking of signed delivery commands.
+# There is exactly one algorithm in the whole procedure: ES256 (geraete-auth §5.1).
+
+[package]
+name = "edms-crypto"
+description = "The folder client's cryptography: JCS, ES256, DPoP, client assertion, key set, anchor fingerprint"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+edms-core.workspace = true
+serde.workspace = true
+# float_roundtrip: without this feature serde_json reads `333333333.33333329` one ULP off
+# (measured: bit pattern …554 instead of …555), and the canonicalisation would write a different
+# number than stood in the signed body. RFC 8785 appendix B then fails — a golden corpus that does
+# not notice that is none.
+serde_json.workspace = true
+thiserror.workspace = true
+p256.workspace = true
+sha2.workspace = true
+base64.workspace = true
+getrandom.workspace = true
+
+[lints]
+workspace = true
+
+[features]
+# The forge builds anchors, key statements, revocations and signed delivery commands, and checks
+# DPoP proofs server-side — for the mock and for tests, never for a release (architecture rule:
+# only edms-mock may pull the feature as a normal dependency). This crate's own tests compile the
+# module anyway (`cfg(test)`).
+forge = []

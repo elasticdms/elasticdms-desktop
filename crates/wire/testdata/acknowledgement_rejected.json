@@ -1,0 +1,4 @@
+{
+  "outcome": "REJECTED",
+  "detail": "the command kind `DELETE_EVERYTHING` is not in this client's catalogue; it is not executed"
+}

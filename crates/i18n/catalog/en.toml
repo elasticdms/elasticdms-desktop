@@ -1,0 +1,259 @@
+# en.toml — every sentence the user reads in English.
+#
+# A real translation, not a placeholder: the English is written for an English reader, not
+# transliterated from the German. Where the German keeps a German term because it is a legal term
+# (Akte, GoBD), the English names the thing and puts the German term in brackets once — the same
+# rule the comments in this house follow.
+#
+# English is also the fallback language (`edms_i18n::FALLBACK`): a workstation whose locale the
+# client does not speak reads this file. That is why nothing here may be left half done.
+
+# The language tag for Intl in the window (date and number formats).
+locale.tag = "en-GB"
+
+# ── The menu on the icon ─────────────────────────────────────────────────────────────────────
+[menu]
+open = "Open elasticdms"
+folder.explorer = "Open folder in File Explorer"
+folder.finder = "Open folder in Finder"
+folder.plain = "Open folder"
+baskets = "Open mailbaskets"
+sign_in = "Sign in …"
+sign_out = "Sign out"
+signing_in = "Signing in …"
+quit = "Quit"
+tooltip = "elasticdms – {status}"
+
+# ── The state, in the menu and in the window ─────────────────────────────────────────────────
+[status]
+signed_in = "Signed in"
+signed_in_as = "Signed in as {account}"
+not_signed_in = "Not signed in"
+login_required = "Sign-in required"
+offline = "Offline"
+awaiting_approval = "Device is waiting for approval"
+security_warning = "Security warning – please tell your IT department"
+signing_in = "Signing in – code {code}"
+with_hint = "{state} – {hint}"
+
+# ── The row kinds of the usage log ───────────────────────────────────────────────────────────
+[log]
+opened = "Opened"
+open_failed = "Could not be opened"
+new_version = "New version received"
+space_reclaimed = "Local copy released"
+access_revoked = "Access revoked"
+erased_by_order = "Erased by order"
+ingest_accepted = "Taken into the inbox"
+ingest_failed = "Ingest failed"
+device_registered = "Device registered"
+signed_in = "Signed in"
+signed_out = "Signed out"
+login_required = "Sign-in required"
+connection_lost = "Connection lost"
+connection_restored = "Connection restored"
+security_warning = "Security warning"
+redacted = "Document erased by order"
+
+# ── A delivery command that was carried out ──────────────────────────────────────────────────
+[command]
+dehydrate = "Local copies released"
+reconcile = "Reconcile started"
+sign_out = "Sign-out ordered"
+refresh_keys = "Server keys refreshed"
+
+# ── The window ───────────────────────────────────────────────────────────────────────────────
+[window]
+loading = "Loading …"
+title_with_account = "elasticdms – {account}"
+button.sign_in = "Sign in …"
+button.folder = "Open folder"
+button.baskets = "Mailbaskets"
+login.title = "Sign this device in"
+login.text = "Open the sign-in page and enter this code. While you do, check that the page shows the same check code as here."
+login.address = "Address"
+login.anchor = "Check code"
+login.anchor_missing = "– (the server names none)"
+login.button = "Open the sign-in page"
+list.title = "Recently on this device"
+list.local_note = "Local view – the authoritative access log is kept by the server."
+list.empty = "Nothing has happened on this device yet. As soon as you open a file, it will appear here."
+list.load_older = "Load older"
+list.redacted_title = "The name was removed because the document was erased by order."
+folder_missing = "The folder has not been set up on this device yet."
+baskets_missing = "The mailbaskets are not in the folder on this device yet."
+
+# ── The mirror: what stands in File Explorer and in Finder ───────────────────────────────────
+#
+# The file names of the hints stand here as well: in English the file is called README.txt, in
+# German LIESMICH.txt. Whoever gets a view in their language gets all of it.
+[mirror]
+baskets = "Mailbaskets"
+archives = "Archives"
+searches = "Saved searches"
+readme.name = "README.txt"
+readme.body = """
+elasticdms – folder view
+
+This folder shows your mailbaskets, your archives with their case files
+(Akten) and your saved searches from elasticdms. It is a view, not a filing
+cabinet: you cannot save, change, rename or delete anything here. Files are
+loaded only when you open them; every opening is recorded as an access.
+
+"Always keep on this device" is NOT a guarantee.
+If a document is erased, or your access to it is withdrawn, elasticdms removes
+the copy from this device even when you have pinned it.
+
+Put new documents into one of the folders under "Mailbaskets". That is the one
+place here where you may put a file. Capture then opens in your browser; where
+the document is filed is decided by the basket, not by this folder.
+"""
+truncated.name = "Result list truncated – README.txt"
+truncated.body = """
+This saved search has more hits than the folder can show.
+The {count} most recent documents are shown.
+
+Refine the search in your browser so that all hits appear.
+"""
+
+# ── Sentences the engine and the app say to the user ─────────────────────────────────────────
+[notice]
+signing_out = "Signing out …"
+stopping = "elasticdms is shutting down."
+awaiting_approval = "The device is waiting for approval by your IT department. Compare this fingerprint with the procedural documentation: {fingerprint}"
+enrollment_code_missing = "This device has not been set up yet; the enrolment code from the elasticdms console is missing (EDMS_ENROLLMENT_CODE)."
+session_ended = "The session has ended; please sign in again."
+device_code_expired = "The device code has expired; please start the sign-in again."
+login_rejected = "The sign-in was rejected."
+step_up_required = "This operation needs a more recent sign-in."
+server_refused = "The server refused the operation."
+signed_in_as = "as {account}"
+device_registered = "Device {device} registered."
+device_registered_again = "Device {device} registered (it had already been set up)."
+basket_progress.one = "One file from a mailbasket is being taken in."
+basket_progress.many = "{count} files from the mailbaskets are being taken in."
+erased_by_order.one = "Erased from this device by order: 1 document."
+erased_by_order.many = "Erased from this device by order: {count} documents."
+access_revoked.one = "Access was withdrawn: 1 document."
+access_revoked.many = "Access was withdrawn: {count} documents."
+space_reclaimed.one = "Local copies released: 1 document."
+space_reclaimed.many = "Local copies released: {count} documents."
+no_folder_on_this_platform = "The elasticdms folder exists for Windows and macOS; on this operating system it does not appear. Signing in, the usage log and \"elasticdms doctor\" work all the same."
+no_folder_without_bundle = "The elasticdms folder appears only once elasticdms runs as an app bundle: the file provider extension sits inside it (make bundle). Signing in, the usage log and \"elasticdms doctor\" work without a bundle too."
+mirror_path_not_unicode = "The folder path \"{path}\" is not valid Unicode text; the Cloud Filter API accepts only such paths. Set EDMS_MIRROR_PATH to another place."
+delivery_signature = "A delivery command was not carried out: its signature does not hold ({reason})."
+key_set_unreadable = "The key set cannot be read: {reason}"
+server_keys_rejected = "Discarded while reconciling the server keys: {reason}"
+
+# ── What the app refuses, and why ────────────────────────────────────────────────────────────
+[error]
+folder_not_provisioned = "The elasticdms folder has not been set up on this device."
+baskets_not_provisioned = "The mailbaskets are not in the folder on this device."
+open_failed = "\"{target}\" could not be opened: {reason}"
+log_unreadable = "The usage log could not be read: {reason}"
+login_address = "The sign-in address \"{address}\" will not be opened: only https:// is allowed (http:// only for 127.0.0.1 and localhost)."
+already_signed_in = "You are already signed in."
+sign_in_running = "A sign-in is already running; the code is shown in the window."
+nobody_signed_in = "Nobody is signed in."
+awaiting_approval_sign_in = "This device is still waiting for approval by your IT department; until then no sign-in is possible. Fingerprint to compare: {fingerprint}"
+offline_sign_in = "The elasticdms server cannot be reached; you can sign in as soon as the connection is back."
+sign_out_not_started = "The sign-out could not be started: {reason}"
+no_sign_in_running = "No sign-in is running at the moment."
+row_number = "Row number {number} does not fit into the view."
+folder_not_available = "The elasticdms folder is not available on this device: {reason}"
+folder_channel = "The connection to the folder extension could not be set up: {reason}"
+folder_secret = "The secret for the folder channel could not be created: {reason}"
+
+# ── What the engine refuses, and why ─────────────────────────────────────────────────────────
+#
+# {reason} carries the technical account, and that stays English: what is a server judgement stays
+# a server judgement, and a translated diagnosis could not be found again in a bug report.
+[error.engine]
+configuration = "The set-up of this workstation is incomplete: {reason}"
+vault = "The operating system's keychain could not be used: {reason}"
+store = "The local state could not be read or written: {reason}"
+crypto = "A cryptographic check failed: {reason}"
+directory = "\"{path}\" could not be set up: {reason}"
+runtime = "elasticdms could not start its runtime: {reason}"
+stopped = "elasticdms is shutting down."
+not_signed_in = "Nobody is signed in."
+enrollment_code_missing = "This device has not been set up yet; the enrolment code from the elasticdms console is missing."
+refused = "The server refuses: {reason}"
+session_expired = "The session has expired: {reason}"
+no_network = "The elasticdms server cannot be reached: {reason}"
+security = "Security abort: {reason}"
+no_file_system = "The folder has not been set up on this device yet."
+internal = "Internal error in the folder client: {reason}"
+
+# ── What File Explorer and Finder show when the source cannot deliver ────────────────────────
+[error.source]
+not_signed_in = "Sign-in required — elasticdms is not signed in on this device."
+no_network = "The elasticdms server cannot be reached."
+not_found = "The entry \"{entry}\" no longer exists."
+no_access = "No access to this document."
+integrity = "The loaded content does not match the checksum (expected {expected}, received {actual}); the file was not taken over."
+incomplete = "The server delivered {actual} instead of {expected} bytes; the file was not taken over."
+anchor_expired = "The change marker is stale; the folder is being enumerated afresh."
+cancelled = "The request was cancelled."
+sink = "The loaded content could not be stored: {reason}"
+server = "The server reports: {reason}"
+internal = "Internal error in the folder client: {reason}"
+
+# ── What the platform layer could not carry out ──────────────────────────────────────────────
+[error.platform]
+not_ready = "The folder has not been set up on this device."
+not_found = "The entry \"{entry}\" is not on this device."
+in_use = "The file \"{entry}\" is open at the moment; the operation will be retried."
+operating_system = "The operating system reports {code}: {text}"
+not_supported = "Not possible on this operating system: {what}"
+
+# ── The macOS extension ──────────────────────────────────────────────────────────────────────
+[error.provider]
+app_not_reachable = "The elasticdms app cannot be reached ({reason}). Please start elasticdms."
+foreign_identifier = "The identifier \"{identifier}\" does not come from elasticdms."
+no_trash = "This folder is read-only and has no wastebasket."
+no_file = "\"{entry}\" is a folder and has no content to load."
+read_only = "This folder is read-only; changes are not passed on to elasticdms."
+delete_rejected = "This folder is read-only; the file will be restored."
+page_expired = "The list changed while it was being enumerated; it starts again."
+staging = "macOS provides no staging folder for downloaded files: {reason}"
+file = "The downloaded file could not be staged: {reason}"
+cancelled = "The request was cancelled."
+
+# ── The sample data of `--demo` ──────────────────────────────────────────────────────────────
+#
+# The demo stock is user text too: whoever shows the user interface in English does not want a
+# half-German log. The document names stay as they are — they are archive content.
+[demo]
+account = "Erika Mustermann"
+basket = "Mailbaskets › Accounting"
+case.sulzer = "Archives › Customers › Sulzer pumps – maintenance contract 2026"
+case.engineering = "Archives › Engineering › Technical documentation"
+case.safety = "Archives › Administration › Occupational safety"
+case.northport = "Archives › Projects › Northport project"
+case.purchasing = "Archives › Administration › Purchasing"
+case.personnel = "Archives › Administration › Personnel"
+case.quality = "Archives › Engineering › Quality management"
+case.fleet = "Archives › Administration › Vehicle fleet"
+search.invoices = "Saved searches › Open invoices over €10,000"
+search.offers = "Saved searches › Open quotations"
+search.receipts = "Saved searches › My receipts"
+loaded = "Loaded and verified."
+loaded_2_4 = "Loaded and verified · 2.4 MB."
+loaded_1_1 = "Loaded and verified · 1.1 MB."
+loaded_480 = "Loaded and verified · 480 KB."
+ingest_with_browser = "Taken into the inbox; capture was opened in the browser."
+ingest_plain = "Taken into the inbox."
+new_version = "A new version is on the server. The local copy was discarded and will be loaded afresh the next time you open it."
+connection_restored = "The server can be reached again."
+connection_lost = "The elasticdms server cannot be reached. Files already loaded stay readable."
+space_reclaimed_stale = "Not opened for 30 days; the local copy was released. The entry stays, and it will be loaded afresh the next time you open it."
+space_reclaimed_asked = "Space released on request."
+no_access = "No access to this document."
+access_revoked = "The permission was withdrawn; the local copy has been removed."
+security_warning = "A delivery command carried no valid signature and was not carried out."
+ingest_failed = "The server could not be reached. The file stays in the mailbasket and will be taken in again."
+session_expired = "The session has expired. Files already loaded stay readable; new ones open only after you sign in."
+device_approved = "This device was registered and approved by the IT department."
+sign_in_not_started = "The demo sign-in could not be started: {reason}"
+mirror_cleared = "The folder was cleared; no document name is left on this device."

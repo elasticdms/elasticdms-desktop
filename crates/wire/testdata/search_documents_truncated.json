@@ -1,0 +1,19 @@
+{
+  "items": [
+    {
+      "documentId": "doc_01JK4R7ZQ8M3N5P6T9V0WXYZAB",
+      "title": "Rechnung 2026-0412",
+      "mediaType": "application/pdf",
+      "size": 284173,
+      "sha256": "sha256:8b2d0e13d600e99b8f897dc8dd4df00b4f94a3b9f4c5fce1ecc44790a3304c96",
+      "version": "3",
+      "createdAt": "2026-03-14T09:12:44Z",
+      "updatedAt": "2026-09-02T08:14:22Z"
+    }
+  ],
+  "nextCursor": "eyJ0IjoxNzcyNDQ4MjkzfQ",
+  "hasMore": true,
+  "totalCapped": true,
+  "displayLimit": 5000,
+  "refineUrl": "https://app.elasticdms.io/suche?gespeichert=srch_01JKB2N4P6Q8R0S2T4V6W8X0Y2"
+}
