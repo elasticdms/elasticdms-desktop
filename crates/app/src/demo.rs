@@ -34,7 +34,9 @@ use crate::display::{
     DisplayError, DisplaySource, DisplayState, ExtensionState, Fixed, LoginCode, SetupField,
     SetupReason, SetupValues, SetupView, Status, Waker,
 };
-use crate::setup::{DATABASE_NAME, DEVICE_NAME_FALLBACK, HOLDING_NAME, STAGING_NAME};
+use crate::setup::{
+    DATABASE_NAME, DEVELOPMENT_BASE, DEVICE_NAME_FALLBACK, HOLDING_NAME, STAGING_NAME,
+};
 
 /// The sample account — a name, therefore the same in every catalogue.
 pub fn account(catalogue: &Catalog) -> &str {
@@ -68,10 +70,14 @@ pub enum DemoState {
     Offline,
     /// Security warning.
     Warning,
+    /// A workstation on its first morning: nobody has told it anything, and its set-up is the
+    /// one an unmanaged device really gets — one address field, prefilled
+    /// (`setup::DEVELOPMENT_BASE`), and seven steps.
+    FirstRun,
 }
 
 impl DemoState {
-    const ALL: [Self; 7] = [
+    const ALL: [Self; 8] = [
         Self::SignedIn,
         Self::Login,
         Self::SignedOut,
@@ -79,11 +85,20 @@ impl DemoState {
         Self::Approval,
         Self::Offline,
         Self::Warning,
+        Self::FirstRun,
     ];
 
     /// The names for the command line, in the order of [`Self::ALL`].
-    pub const NAMES: [&'static str; 7] =
-        ["signed-in", "login", "signed-out", "expired", "approval", "offline", "warning"];
+    pub const NAMES: [&'static str; 8] = [
+        "signed-in",
+        "login",
+        "signed-out",
+        "expired",
+        "approval",
+        "offline",
+        "warning",
+        "first-run",
+    ];
 
     /// The name for the command line.
     pub const fn name(self) -> &'static str {
@@ -95,6 +110,7 @@ impl DemoState {
             Self::Approval => "approval",
             Self::Offline => "offline",
             Self::Warning => "warning",
+            Self::FirstRun => "first-run",
         }
     }
 
@@ -160,6 +176,9 @@ impl Inner {
 /// The sample source.
 pub struct DemoSource {
     inner: Arc<Mutex<Inner>>,
+    /// What was asked for on the command line. Only the set-up still reads it after the start:
+    /// `first-run` is a different wizard, not a different log ([`DemoSource::setup`]).
+    state: DemoState,
     folder: PathBuf,
     baskets: PathBuf,
     login_duration: Duration,
@@ -190,6 +209,7 @@ impl DemoSource {
         };
         Ok(Self {
             inner: Arc::new(Mutex::new(inner)),
+            state,
             folder,
             baskets,
             login_duration: LOGIN_DURATION,
@@ -210,6 +230,38 @@ impl DemoSource {
     /// A refusal as a whole sentence out of the catalogue.
     fn refuse(&self, which: Key) -> DisplayError {
         DisplayError::NotPossible(self.catalogue.text(which).to_owned())
+    }
+
+    /// The wizard of a workstation nobody has told anything — `--demo=first-run`, and the reasons
+    /// for it stand at [`DisplaySource::setup`].
+    fn first_run_setup(&self, inner: &Inner) -> SetupView {
+        // One text through one channel, which is what makes a real workstation's three addresses
+        // one question (`setup::Resolution::one_address`). The one answer comes back in all three
+        // (view.js, `typed`); the demo keeps the first of them and shows it as all three again.
+        let one = SetupField::open(&inner.setup.api_base);
+        SetupView {
+            // ByHand here too: `--demo` opens no wizard by itself (ADR-D13 §11), and this state
+            // changes which wizard the button in the window opens, not whether it opens.
+            reason: SetupReason::ByHand,
+            api_base: one.clone(),
+            auth_base: one.clone(),
+            app_base: one,
+            one_address: true,
+            // Only while the field would otherwise stand empty — the same condition
+            // `wiring::view_of` puts it under. Nothing is written down here in any case: the demo
+            // has no store, and what the wizard is told lives for this run.
+            suggested_base: inner.setup.api_base.is_empty().then(|| DEVELOPMENT_BASE.to_owned()),
+            development_base: Some(DEVELOPMENT_BASE.to_owned()),
+            device_name: SetupField::open(&inner.setup.device_name),
+            mirror_path: SetupField::open(self.folder.display().to_string()),
+            language: SetupField::open(self.catalogue.language().tag()),
+            enrollment_code: SetupField::open(""),
+            data_path: self.folder.with_file_name(DATABASE_NAME).display().to_string(),
+            staging_path: self.folder.with_file_name(STAGING_NAME).display().to_string(),
+            holding_path: self.folder.with_file_name(HOLDING_NAME).display().to_string(),
+            enrolled: inner.state.account.is_some(),
+            extension: inner.extension,
+        }
     }
 }
 
@@ -266,7 +318,9 @@ fn start_state(
         DemoState::Offline => signed_in(folder, baskets, Status::Offline, catalogue),
         DemoState::Warning => signed_in(folder, baskets, Status::SecurityWarning, catalogue),
         DemoState::Login => without_account(Status::NotSignedIn, Some(demo_code())),
-        DemoState::SignedOut => without_account(Status::NotSignedIn, None),
+        // A device that has not been set up has not been signed in either: the same window as
+        // `signed-out`, and the difference between the two states is the wizard behind it.
+        DemoState::SignedOut | DemoState::FirstRun => without_account(Status::NotSignedIn, None),
         DemoState::Approval => without_account(Status::AwaitingApproval, None),
     }
 }
@@ -388,15 +442,30 @@ impl DisplaySource for DemoSource {
         open_directory(&path)
     }
 
-    /// A set-up as an unmanaged workstation has it, with one value the operator fixed all the
-    /// same — so that both cases of ADR-D13 §3 can be seen in one run: fields that are offered,
-    /// and a value that is only shown, with the sentence that says where it comes from.
+    /// A set-up as a workstation has it — which of the two the run was started with decides
+    /// which one.
+    ///
+    /// `--demo` and every state but one show the **managed** shape: three addresses, one of them
+    /// an operator's, so that both cases of ADR-D13 §3 can be seen in one run — fields that are
+    /// offered, and a value that is only shown, with the sentence that says where it comes from.
+    /// Because the three then do not agree, the page shows them one by one
+    /// (`SetupView::one_address`).
+    ///
+    /// `--demo=first-run` shows the **unmanaged** shape, and it exists because until 2026-09-14
+    /// nothing in this repository did: the one address field, prefilled with
+    /// `setup::DEVELOPMENT_BASE`, with the sentence underneath saying what that address is. That
+    /// is the shape the correction of that day was written for, and a change nobody can look at
+    /// is a change nobody checks — both defects found in it that day were found in the page, by
+    /// hand.
     ///
     /// It stores nothing (there is no store here) and reaches no server. Only the extension
     /// answers like a real one: it is off and turns on by itself after a few questions, the way
     /// it does when somebody switches it on in System Settings while this page stands open.
     fn setup(&self) -> Option<SetupView> {
         let inner = self.inner();
+        if self.state == DemoState::FirstRun {
+            return Some(self.first_run_setup(&inner));
+        }
         Some(SetupView {
             // ADR-D13 §11: "It never opens with `--demo`, which has no store to read and nothing
             // to configure." This is where that holds — `event_loop::open_setup_if_it_is_owed`
@@ -409,6 +478,14 @@ impl DisplaySource for DemoSource {
             auth_base: SetupField::open(&inner.setup.auth_base),
             // The one fixed value of the demo. `.example` is never assigned (RFC 2606).
             app_base: SetupField::fixed("https://archiv.example", Fixed::Operator),
+            // The demo is deliberately the *other* case of the correction of 2026-09-14: its web
+            // interface comes from an operator and the two above it do not, so the three are not
+            // one question and the page shows them as they are. A demo that collapsed them would
+            // show the one shape a managed device can never have.
+            one_address: false,
+            // And therefore nothing is suggested here either: something already stands.
+            suggested_base: None,
+            development_base: Some(DEVELOPMENT_BASE.to_owned()),
             device_name: SetupField::open(&inner.setup.device_name),
             mirror_path: SetupField::open(self.folder.display().to_string()),
             language: SetupField::open(self.catalogue.language().tag()),
@@ -886,6 +963,47 @@ mod tests {
             q.open_baskets(),
             Err(DisplayError::NotProvisioned(crate::display::Place::Baskets))
         );
+    }
+
+    #[test]
+    fn the_first_run_demo_shows_the_set_up_an_unmanaged_workstation_really_gets() {
+        // Until 2026-09-14 no run of this program showed that wizard: `--demo` pins the managed
+        // shape, and the preview pages are built from it, so the one shape the address page was
+        // rewritten for could only be seen by editing generated JSON by hand. A change nobody can
+        // look at is a change nobody checks, and both defects found in that page that day were
+        // found by looking at it.
+        let first = source(DemoState::FirstRun).setup().expect("the demo has a set-up");
+        assert!(first.one_address, "one question, as on a workstation nobody has told anything");
+        assert_eq!(first.suggested_base.as_deref(), Some(DEVELOPMENT_BASE));
+        assert!(first.api_base.value.is_empty(), "and it is no value of this workstation");
+        assert!(first.api_base.is_open() && first.auth_base.is_open() && first.app_base.is_open());
+        assert!(!first.enrolled, "so the enrolment step stands in the list as well");
+
+        // The other states stay the counter-case, so that both shapes can be walked in one build.
+        let managed = source(DemoState::SignedOut).setup().expect("the demo has a set-up");
+        assert!(!managed.one_address, "the operator set one of the three apart");
+        assert_eq!(managed.suggested_base, None);
+    }
+
+    #[test]
+    fn the_first_run_demo_stops_offering_the_prefill_once_an_address_has_been_given() {
+        // The answer arrives as all three (view.js, `typed`), and the next render shows the
+        // address and no offer — the step a real workstation takes through `setup::set_value`
+        // and `wiring::view_of`.
+        let q = source(DemoState::FirstRun);
+        let answer = SetupValues {
+            api_base: Some("https://dms.acme".to_owned()),
+            auth_base: Some("https://dms.acme".to_owned()),
+            app_base: Some("https://dms.acme".to_owned()),
+            ..SetupValues::default()
+        };
+        q.apply_setup(&answer).expect("every address field is open here");
+        let after = q.setup().expect("the demo has a set-up");
+        assert_eq!(after.api_base.value, "https://dms.acme");
+        assert_eq!(after.auth_base.value, "https://dms.acme", "one answer, three values");
+        assert_eq!(after.app_base.value, "https://dms.acme");
+        assert!(after.one_address, "and the page goes on asking once");
+        assert_eq!(after.suggested_base, None, "nothing is offered over a value that stands");
     }
 
     #[test]

@@ -39,6 +39,19 @@
 //! value, and the start aborts a moment later with the store's own sentence on the error output —
 //! exactly as it did before this module read a store.
 //!
+//! ## One address, three values
+//!
+//! Documents, sign-in and web interface are one host in this product, so since 2026-09-14 the
+//! set-up asks for the address **once** and stores the one answer under all three keys — through
+//! [`set_value`] three times, one per [`Value`], each with the same check as before. The three
+//! variables stay: an administrator may still set them apart, and then the page shows the three
+//! as they are rather than flattening them ([`Resolution::one_address`]).
+//!
+//! There is deliberately **no** fourth channel and no shared setting the three fall back to. The
+//! order above has three steps and this module one door; a shared setting would need either a
+//! fourth `EDMS_*` variable — more configuration to answer a request for less — or a writer
+//! beside [`set_value`], and [`set_value`] is where "to set it is to fix it" is enforced.
+//!
 //! ## Who calls the writing half
 //!
 //! ADR-D13 splits the set-up in two: the plumbing (here) and its face (`window.rs`, `view/`, the
@@ -101,6 +114,52 @@ pub const STAGING_NAME: &str = "staging";
 /// The device name when the machine offers none.
 pub const DEVICE_NAME_FALLBACK: &str = "elasticdms workstation";
 
+/// The address the set-up puts into its one address field while elasticdms is not released.
+///
+/// **This is elasticdms's own development server.** It is one company's machine written into an
+/// open-source client, it is not a default anybody else should keep, and there is no deployment
+/// in which it is the right answer for somebody who is not us.
+///
+/// **It is a prefill, never a value.** Nothing resolves to it: [`default_for`] still answers
+/// `None` for the three addresses, [`Resolution::configuration`] still refuses to build a
+/// configuration without an answer, and `doctor` still prints "not set". It reaches exactly one
+/// place — the text standing in the address field of the set-up when no channel carries an
+/// address at all (`wiring::view_of`, `suggested_base`) — and it becomes a value of this
+/// workstation only when a human being stands on that page and presses Next there, through the
+/// same door (`set_value`) as anything else they type. That boundary is the whole reason it may
+/// exist: the argument `edms_engine::config`'s header makes against a quiet fallback — *"a
+/// wrongly set-up workstation speaks to the wrong tenant and nobody notices, because everything
+/// works"* — is about a value the client takes by itself, and this is not one.
+///
+/// **That boundary was written here before it held.** Until 2026-09-14 the page sent every field
+/// of the whole wizard on every "Next", and the first one is pressed on the overview page: a
+/// fresh workstation stored this address two pages before it had been shown the field, and the
+/// sentence underneath — the one mitigation named below — was never shown at all, because the
+/// address was by then a stored value and nothing was being suggested any more. Both halves are
+/// mended in `view.js` (`typed`, which hands the one address over only from the page it stands
+/// on, and `showSuggestion`, which reads the field instead of the offer), and both carry the
+/// measurement. The sentence above is a claim about the code, and this is what it cost to make
+/// it true.
+///
+/// **What it still costs, said plainly:** a user who presses Next on the address page without
+/// reading the field points their client at this host. The client then sends it a device key and
+/// an enrolment code. The enrolment fails one page later, because a code from their own console
+/// does not register a device in our development archive — that is the whole of the protection,
+/// it is thin, and it is accepted only because an unreleased product cannot ask its first users
+/// for an address nobody has published yet. `doctor` names the address as an objection for as long as it stands
+/// (`crate::doctor`), so a support call does not have to guess.
+///
+/// **Before a release this constant goes**, and with it `wiring::view_of`'s `suggested_base` and
+/// `development_base`, the catalogue sentence `setup.server.development`, `doctor`'s objection
+/// and the demo state `first-run` that exists to show the prefilled field. What replaces it is
+/// nothing at all: an empty field, which is what every address this client has ever asked for
+/// was.
+///
+/// The trailing slash is the owner's own spelling of it. It falls away when the value is stored:
+/// `edms_net::connection::check` writes one form of an address, and both channels go through it
+/// ([`as_written`], [`set_value`]).
+pub const DEVELOPMENT_BASE: &str = "https://dms.dev.elasticdms.com/";
+
 /// One value as the resolution found it: what holds, and which channel it came through.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Resolved {
@@ -154,6 +213,29 @@ impl Resolution {
     /// Whether the environment fixes this value — the set-up shows it and offers no field.
     pub fn is_fixed(&self, which: Value) -> bool {
         self.of(which).is_some_and(Resolved::is_fixed)
+    }
+
+    /// Whether the set-up may ask for the three addresses as **one** question (ADR-D13,
+    /// correction of 2026-09-14).
+    ///
+    /// True exactly when the three are indistinguishable on this workstation: the same text, and
+    /// the same channel behind it. One answer is then the truth for all three, and the page asks
+    /// once — in this product documents, sign-in and web interface are one host, and three fields
+    /// asked a question the user cannot answer three ways.
+    ///
+    /// It is also true when nothing stands anywhere, which is the first start of an unmanaged
+    /// workstation and the case the whole change is for.
+    ///
+    /// **False the moment they differ in either way**, and then the page shows the three as they
+    /// are — one field per open value, one line of text per fixed one. An administrator who sets
+    /// only `EDMS_AUTH_BASE` lands here: the sign-in address is theirs and fixed, the other two
+    /// are the user's. Asking one question there would either throw the administrator's value
+    /// away or show a value that holds for one address as if it held for three. The order of
+    /// precedence is untouched by this — it decides each of the three on its own, as it always
+    /// did; this only decides how many fields the page has.
+    pub fn one_address(&self) -> bool {
+        let first = self.of(Value::ApiBase);
+        [Value::AuthBase, Value::AppBase].into_iter().all(|which| self.of(which) == first)
     }
 
     /// The language of this run, resolved through the same order as everything else.
@@ -1209,6 +1291,145 @@ mod tests {
             .configuration()
             .expect("the settings carry all three");
         assert_eq!(k.api_base, "https://api.example", "one string for `is_below`, not two");
+    }
+
+    #[test]
+    fn the_set_up_asks_once_only_while_the_three_addresses_are_indistinguishable() {
+        // The whole rule of the correction of 2026-09-14 in one table. "One question" is not a
+        // preference about layout: it is the claim that one answer would be the truth for all
+        // three, and that claim is false the moment either the text or the channel differs.
+        /// What the case is, what the environment carries, what the setting table carries, and
+        /// whether the set-up may ask once.
+        type Case = (&'static str, HashMap<String, String>, HashMap<String, String>, bool);
+
+        let one = "https://dms.example";
+        let cases: [Case; 6] = [
+            ("a workstation nobody has told anything", HashMap::new(), HashMap::new(), true),
+            (
+                "the one answer of an earlier walk through the set-up",
+                HashMap::new(),
+                map(&[(SETTING_API_BASE, one), (SETTING_AUTH_BASE, one), (SETTING_APP_BASE, one)]),
+                true,
+            ),
+            (
+                "one host out of a policy",
+                map(&[(VAR_API_BASE, one), (VAR_AUTH_BASE, one), (VAR_APP_BASE, one)]),
+                HashMap::new(),
+                true,
+            ),
+            (
+                "a policy that really does name three hosts",
+                map(&[
+                    (VAR_API_BASE, "https://api.acme"),
+                    (VAR_AUTH_BASE, "https://auth.acme"),
+                    (VAR_APP_BASE, "https://app.acme"),
+                ]),
+                HashMap::new(),
+                false,
+            ),
+            (
+                "an administrator who set only the sign-in address",
+                map(&[(VAR_AUTH_BASE, one)]),
+                map(&[(SETTING_API_BASE, one), (SETTING_AUTH_BASE, one), (SETTING_APP_BASE, one)]),
+                false,
+            ),
+            (
+                "two of the three still unanswered",
+                HashMap::new(),
+                map(&[(SETTING_API_BASE, one)]),
+                false,
+            ),
+        ];
+        for (what, environment, settings, expected) in cases {
+            assert_eq!(resolution(&environment, &settings).one_address(), expected, "{what}");
+        }
+    }
+
+    #[test]
+    fn the_same_text_through_two_different_channels_is_still_two_answers() {
+        // The subtle half of the rule above, and the reason the comparison takes the origin with
+        // it: one of these is a fact with "your IT department set this" under it and the other is
+        // a field the user may change. One field claiming to be both would be a field that
+        // silently cannot do what it offers.
+        let one = "https://dms.example";
+        let found = resolution(
+            &map(&[(VAR_API_BASE, one)]),
+            &map(&[(SETTING_AUTH_BASE, one), (SETTING_APP_BASE, one)]),
+        );
+        assert_eq!(found.text(Value::ApiBase), found.text(Value::AuthBase), "the same string");
+        assert!(found.is_fixed(Value::ApiBase) && !found.is_fixed(Value::AuthBase));
+        assert!(!found.one_address(), "and still not one question");
+    }
+
+    #[test]
+    fn an_administrator_who_sets_only_the_sign_in_address_keeps_it_and_the_other_two_stay_open() {
+        // The case the owner named: the three variables stay, so this has to keep working after
+        // the wizard has asked once. The order of precedence decides each of the three on its
+        // own, exactly as before — what the correction changed is how many fields the page has.
+        let one = "https://dms.example";
+        let found = resolution(
+            &map(&[(VAR_AUTH_BASE, "https://auth.acme")]),
+            &map(&[(SETTING_API_BASE, one), (SETTING_AUTH_BASE, one), (SETTING_APP_BASE, one)]),
+        );
+        assert_eq!(found.text(Value::AuthBase), Some("https://auth.acme"), "the administrator's");
+        assert!(found.is_fixed(Value::AuthBase), "shown, never offered");
+        for which in [Value::ApiBase, Value::AppBase] {
+            assert_eq!(found.text(which), Some(one), "{which:?} is still the user's answer");
+            assert_eq!(found.of(which).map(Resolved::origin), Some(Origin::Setting));
+            assert!(!found.is_fixed(which), "{which:?}");
+        }
+        assert!(!found.one_address(), "and the page shows the three as they are");
+        let k = found.configuration().expect("all three stand");
+        assert_eq!(k.auth_base, "https://auth.acme");
+        assert_eq!(k.api_base, one);
+        assert_eq!(k.app_base, one);
+    }
+
+    #[test]
+    fn the_one_answer_of_the_set_up_is_stored_under_all_three_keys_and_reads_back_as_one() {
+        // The writing half of the correction. The page asks once and sends the one answer as all
+        // three values (view.js, `typed`); this is the door it arrives at — three calls, one per
+        // value, each with its own check, and no fourth channel anywhere.
+        let (_directory, mut store) = store();
+        let found = resolution(&HashMap::new(), &HashMap::new());
+        for which in [Value::ApiBase, Value::AuthBase, Value::AppBase] {
+            assert_eq!(
+                set_value(&mut store, &found, which, "https://dms.example/").unwrap(),
+                "https://dms.example"
+            );
+        }
+        for key in [SETTING_API_BASE, SETTING_AUTH_BASE, SETTING_APP_BASE] {
+            assert_eq!(store.setting(key).unwrap().as_deref(), Some("https://dms.example"));
+        }
+        // Read back over the store itself and not through `resolve_over`: that one asks this
+        // process's environment, and a developer who has `EDMS_API_BASE` set in their shell would
+        // fail a test about the setting table.
+        let after = read(&|_| None, &reader(Some(&store)), Language::De);
+        assert!(after.one_address(), "and the next render asks once again");
+        let k = after.configuration().expect("one answer is three values");
+        assert_eq!(k.api_base, "https://dms.example");
+        assert_eq!(k.auth_base, k.api_base);
+        assert_eq!(k.app_base, k.api_base);
+    }
+
+    #[test]
+    fn the_development_address_is_a_field_that_is_prefilled_and_never_a_value_that_holds() {
+        // `DEVELOPMENT_BASE` is one company's development server in an open-source client. What
+        // makes it bearable is exactly this line: the resolution does not know it. A client whose
+        // user never walks the address page has no address, says so, and does not start — the
+        // argument `edms_engine::config`'s header makes against a quiet fallback.
+        let found = resolution(&HashMap::new(), &HashMap::new());
+        for which in [Value::ApiBase, Value::AuthBase, Value::AppBase] {
+            assert_eq!(found.text(which), None, "{which:?} came from nowhere");
+            assert!(found.missing().contains(&which), "{which:?} is what the set-up has to ask");
+        }
+        assert!(found.configuration().is_err(), "and there is no configuration without it");
+        // It is offered as a field all the same, so it has to be a value the door would take.
+        assert_eq!(
+            edms_net::connection::check("API base", DEVELOPMENT_BASE).expect("an https address"),
+            "https://dms.dev.elasticdms.com",
+            "the trailing slash falls away where every other address loses it"
+        );
     }
 
     #[test]

@@ -407,6 +407,19 @@
       check: null,
       show: (raw) => CATALOG["setup.language." + raw] || raw,
     },
+    // The one address. Its value is not the app's — `setup.base` is put together here out of
+    // the three below, because the app said they are one question (`SetupView.oneAddress`) — and
+    // nothing travels back under this name: `typed` sends the one answer as all three.
+    //
+    // `suggest` is the only place in this page where a field may stand filled with something
+    // that does not hold: the development address, while elasticdms is not released
+    // (`setup::DEVELOPMENT_BASE`). The app decides whether there is one at all.
+    {
+      name: "base",
+      page: "server",
+      check: checkAddress,
+      suggest: () => (setup && setup.suggestedBase) || "",
+    },
     { name: "apiBase", page: "server", check: checkAddress },
     { name: "authBase", page: "server", check: checkAddress },
     { name: "appBase", page: "server", check: checkAddress },
@@ -458,9 +471,16 @@
     return PAGES.find((p) => p.dataset.page === name);
   }
 
-  /** The fields of one page that this build carries. */
+  /** The three addresses, in the order the app carries them. */
+  const ADDRESSES = ["apiBase", "authBase", "appBase"];
+
+  /** The fields of one page that this build carries **and this device shows**.
+   *
+   *  The second half is the address page: either the one field or the three, never both. A box
+   *  that is not in the page is not a field of it — it is not checked, it is not a reason for the
+   *  page to be a step, it is not a fact, and nothing is sent from it. */
   function fieldsOf(name) {
-    return FIELDS.filter((d) => d.page === name && d.box);
+    return FIELDS.filter((d) => d.page === name && d.box && !d.box.hidden);
   }
 
   function valueOf(name) {
@@ -470,6 +490,14 @@
   function isOpen(name) {
     const value = valueOf(name);
     return Boolean(value) && value.fixed === "NO";
+  }
+
+  /** Whether a field stands on the page the user is standing on.
+   *
+   *  Only one field in this wizard needs to be asked (`typed`, and the measurement beside it):
+   *  the one that may stand filled with something nobody typed. */
+  function isOnPage(definition) {
+    return Boolean(definition && steps[at]) && steps[at].dataset.page === definition.page;
   }
 
   /** Whether a page is a step on this device. A page on which nothing is open is not a step
@@ -524,6 +552,75 @@
     field("setup-facts").hidden = list.childElementCount === 0;
   }
 
+  /** Which shape the address page has — one question or three (ADR-D13, correction of
+   *  2026-09-14).
+   *
+   *  **The app decides it, not this page.** `SetupView.oneAddress` is true only when the three
+   *  addresses carry the same text through the same channel. The moment they differ — an
+   *  administrator who set one of the three variables, three hosts out of a policy — the three
+   *  stand here as they were given. A page that averaged them would either throw two of an
+   *  administrator's values away or show one value as if it held for three.
+   *
+   *  The one field's value is put together here because there is no such value on the other
+   *  side: it is the first of three that are all the same. Nothing travels back under this name;
+   *  `typed` sends the one answer as all three. */
+  function placeAddresses() {
+    const one = Boolean(setup.oneAddress);
+    setup.base = one ? { value: setup.apiBase.value, fixed: setup.apiBase.fixed } : null;
+    for (const definition of FIELDS) {
+      if (!definition.box) {
+        continue;
+      }
+      if (definition.name === "base") {
+        definition.box.hidden = !one;
+      } else if (ADDRESSES.includes(definition.name)) {
+        definition.box.hidden = one;
+      }
+    }
+    const paragraph = field("setup-server-text");
+    paragraph.textContent = text(one ? paragraph.dataset.text : paragraph.dataset.textSeparate);
+  }
+
+  /** Whether two addresses name the same host — the page's half of `doctor::is_development`.
+   *
+   *  A trailing slash and the case of scheme and host say nothing about which server is meant
+   *  (RFC 3986 §6.2.2.1), and the app folds exactly these two away before it objects. Only ASCII
+   *  case, like `str::eq_ignore_ascii_case` on the other side: `toLowerCase` also folds
+   *  characters outside ASCII, and two sides of one comparison that fold differently are a
+   *  difference nobody finds by looking. */
+  function sameAddress(one, other) {
+    const fold = (raw) =>
+      raw
+        .trim()
+        .replace(/\/+$/, "")
+        .replace(/[A-Z]/g, (letter) => letter.toLowerCase());
+    return fold(one) === fold(other);
+  }
+
+  /** The sentence under the address field while it carries the development address
+   *  (`setup::DEVELOPMENT_BASE`, which the app names in `developmentBase`).
+   *
+   *  It stands for as long as that address stands in the field — however it got there and however
+   *  it is written — and it goes the moment somebody types over it: the sentence says what is
+   *  *in* the field.
+   *
+   *  It used to be tied to the suggestion of **this** render (`suggestedBase`, which the app
+   *  sends only while no channel carries an address at all) and compared byte for byte. Both
+   *  halves switched the one warning this design has off in the ordinary case. MEASURED on
+   *  2026-09-14: the address as the app stores it — the same host without the trailing slash the
+   *  offer carries — did not match the offer; and one "Next" followed by one "Back" brought the
+   *  page back with the address stored, nothing suggested any more, and no sentence under a
+   *  field labelled "Address of your archive". */
+  function showSuggestion() {
+    const base = FIELDS.find((d) => d.name === "base");
+    const standing =
+      Boolean(setup && setup.developmentBase) &&
+      Boolean(base && base.box && !base.box.hidden) &&
+      isOpen("base") &&
+      sameAddress(base.control.value, setup.developmentBase);
+    field("setup-development").hidden = !standing;
+  }
+
   /** A value as a field, or as a line of text with its origin. */
   function showField(definition) {
     const value = valueOf(definition.name);
@@ -540,7 +637,10 @@
       hint.hidden = !open;
     }
     if (open) {
-      definition.control.value = value.value;
+      // The one place in this page where a field may stand filled with something that does not
+      // hold — see `suggest` in FIELDS. Everywhere else `value.value` is the effective value or
+      // nothing at all.
+      definition.control.value = value.value || (definition.suggest ? definition.suggest() : "");
       // A label points at its field; without one it is the heading of a fact and points nowhere.
       label.htmlFor = definition.control.id;
     } else {
@@ -580,11 +680,15 @@
     const wasOn = steps[at] ? steps[at].dataset.page : null;
     expecting = null;
     setup = view;
+    // Before the fields are drawn: it decides which of them are in the page at all, and
+    // `showField` on a box that is not is a line of text nobody sees being kept up to date.
+    placeAddresses();
     for (const definition of FIELDS) {
-      if (definition.box) {
+      if (definition.box && !definition.box.hidden) {
         showField(definition);
       }
     }
+    showSuggestion();
     field("setup-counterpart").hidden = view.reason !== "COUNTERPART";
     field("setup-data-path").textContent = view.dataPath;
     field("setup-staging-path").textContent = view.stagingPath;
@@ -621,12 +725,23 @@
     field("setup-folder").textContent = (shown && shown.folder) || "";
   }
 
+  /** What a step is called in the list.
+   *
+   *  The address page has two names, exactly as it has two paragraphs (`placeAddresses`): one
+   *  address is "Address", three that were given apart are "Addresses". The list is read together
+   *  with the page it points at, and a singular over a page carrying three fields is the two of
+   *  them disagreeing in writing. */
+  function stepName(element) {
+    const separate = element.dataset.stepSeparate;
+    return separate && setup && !setup.oneAddress ? separate : element.dataset.step;
+  }
+
   /** The step indicator, the two buttons, and which page is on. */
   function showStep() {
     const list = field("setup-steps");
     list.replaceChildren();
     steps.forEach((element, place) => {
-      const entry = child(list, "li", null, text(element.dataset.step));
+      const entry = child(list, "li", null, text(stepName(element)));
       entry.dataset.state = place === at ? "current" : place < at ? "done" : "open";
     });
     field("setup-count").textContent =
@@ -673,6 +788,9 @@
     }
     field("setup-next").disabled = !right;
     field("setup-finish").disabled = !right;
+    // Here too, and not only when the page is drawn: this runs on every keystroke, and the
+    // sentence about the development address has to go the moment it stops being true.
+    showSuggestion();
   }
 
   /** What the user typed, for the app.
@@ -686,13 +804,43 @@
   function typed() {
     const values = {};
     for (const definition of FIELDS) {
+      // The one address is this page's own field and not a value of the app's: it answers for
+      // the three below, which is what the loop after this does. A member named `base` in the
+      // message would be a value nothing on the other side has ever heard of.
+      if (definition.name === "base") {
+        continue;
+      }
       const raw =
-        definition.box && isOpen(definition.name) ? definition.control.value.trim() : "";
+        definition.box && !definition.box.hidden && isOpen(definition.name)
+          ? definition.control.value.trim()
+          : "";
       values[definition.name] = raw === "" ? null : raw;
+    }
+    // One question, three answers. The three settings stay what they always were — the
+    // administrator who sets one of the three variables apart is still answered value by value
+    // (ADR-D13 §1 and its correction of 2026-09-14) — and what changed is only how often the
+    // user is asked. Each of the three goes through the store's own door on the other side, so
+    // one that is refused is refused on its own.
+    //
+    // **And only from the page it stands on.** Every other field is empty until somebody types in
+    // it, so "not reached yet" and "empty" are the same thing and the rule above carries them.
+    // This one is not: it is the only field in the wizard that may stand filled with something
+    // nobody typed (`suggest` in FIELDS), and without this line the first "Next" — pressed on the
+    // overview page, two pages before the address is so much as explained — made the development
+    // address a value of this workstation. MEASURED on 2026-09-14 in the preview of a fresh
+    // unmanaged workstation: one click on "Step 1 of 7" posted the development host as `apiBase`,
+    // `authBase` and `appBase`, and the sentence saying what that address is was never shown to
+    // anybody.
+    const base = FIELDS.find((d) => d.name === "base");
+    if (isOnPage(base) && base.box && !base.box.hidden && isOpen("base")) {
+      const one = base.control.value.trim() || null;
+      for (const name of ADDRESSES) {
+        values[name] = one;
+      }
     }
     // What the check accepted is what is stored: the trailing slash is gone, so that the app
     // compares against one string and not two.
-    for (const name of ["apiBase", "authBase", "appBase"]) {
+    for (const name of ADDRESSES) {
       if (values[name]) {
         values[name] = values[name].replace(/\/+$/, "");
       }

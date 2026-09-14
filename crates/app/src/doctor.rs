@@ -27,7 +27,7 @@ use edms_engine::StoreSpace;
 use edms_engine::config::{Origin, Value};
 use edms_engine::report::{DatabaseReport, Report};
 
-use crate::setup::{Counterpart, Resolution};
+use crate::setup::{Counterpart, DEVELOPMENT_BASE, Resolution};
 use crate::vault::SystemVault;
 use crate::wiring::build_engine;
 
@@ -93,6 +93,11 @@ fn gather() -> Result<Vec<String>, String> {
             old.api_base, configuration.api_base
         ));
     }
+    objections.extend(development_objection(
+        &configuration.api_base,
+        &configuration.auth_base,
+        &configuration.app_base,
+    ));
     println!("\n{}", section("Keychain"));
     match SystemVault::new().check() {
         Ok(()) => println!("  {:<22} reachable", "State"),
@@ -189,6 +194,42 @@ fn setup_row(resolution: &Resolution) -> Vec<(String, String, String)> {
     rows
 }
 
+/// Whether an address is [`DEVELOPMENT_BASE`].
+///
+/// Compared the way the two strings really meet: the constant carries the trailing slash the
+/// owner wrote it with and an effective address never does — both channels run through
+/// `edms_net::connection::check`, which takes it off — and scheme and authority are
+/// case-insensitive (RFC 3986 §6.2.2.1). Nothing behind the first slash matters here, because the
+/// constant has nothing there.
+/// The prefill of the address page, caught where a support call looks — one sentence naming every
+/// value that carries it, or nothing at all.
+///
+/// It gets this far in two ways: somebody pressed Next on the address page over the address that
+/// stood in the field (`setup::DEVELOPMENT_BASE`), or an administrator set the variables to it.
+/// Nothing downstream would ever say so — to the client it is an address like any other, and
+/// everything would "work" right up to the enrolment.
+fn development_objection(api: &str, auth: &str, app: &str) -> Option<String> {
+    let named: Vec<String> =
+        [(Value::ApiBase, api), (Value::AuthBase, auth), (Value::AppBase, app)]
+            .into_iter()
+            .filter(|(_, address)| is_development(address))
+            .map(|(which, _)| format!("{} ({})", feature(which), which.variable()))
+            .collect();
+    (!named.is_empty()).then(|| {
+        format!(
+            "This workstation is pointed at elasticdms's own development server \
+             ({DEVELOPMENT_BASE}): {}. That address is what the set-up puts into its address \
+             field while elasticdms is not released, and it is nobody's archive. Enter the \
+             address of your own server in the set-up, or set the variables named above.",
+            named.join(", ")
+        )
+    })
+}
+
+fn is_development(address: &str) -> bool {
+    address.trim_end_matches('/').eq_ignore_ascii_case(DEVELOPMENT_BASE.trim_end_matches('/'))
+}
+
 /// Which of the values is a path, and therefore gets the note that it is not there yet.
 const fn is_path(which: Value) -> bool {
     matches!(which, Value::DataPath | Value::Staging | Value::MirrorPath | Value::Holding)
@@ -264,6 +305,7 @@ mod tests {
     use edms_core::identifier::DeviceIdentifier;
     use edms_crypto::key_set::AnchorState;
     use edms_engine::DeviceKeyOrigin;
+    use edms_engine::config::{VAR_API_BASE, VAR_APP_BASE, VAR_AUTH_BASE};
     use edms_engine::report::{KeyReport, LeftoversReport, SessionReport, VIEW_SESSION};
 
     use super::*;
@@ -308,6 +350,43 @@ mod tests {
     #[test]
     fn a_healthy_report_has_nothing_to_object_to() {
         assert!(objections_in(&healthy_report()).is_empty());
+    }
+
+    #[test]
+    fn a_workstation_pointed_at_our_development_server_is_told_so_and_told_which_values() {
+        // The objection itself, and not only the comparison underneath it: with the sentence
+        // deleted this test is red, which is what the one below was not (it stayed green while
+        // `gather` had no objection at all).
+        let all = development_objection(DEVELOPMENT_BASE, DEVELOPMENT_BASE, DEVELOPMENT_BASE)
+            .expect("three values carry it");
+        for variable in [VAR_API_BASE, VAR_AUTH_BASE, VAR_APP_BASE] {
+            assert!(all.contains(variable), "the objection does not name {variable}: {all}");
+        }
+        assert!(all.contains(DEVELOPMENT_BASE), "and it says which host it is about");
+        // One value is enough, and the other two are not dragged in with it.
+        let one = development_objection("https://dms.acme", "HTTPS://DMS.DEV.ELASTICDMS.COM", "")
+            .expect("the sign-in points at it");
+        assert!(one.contains(VAR_AUTH_BASE), "{one}");
+        assert!(!one.contains(VAR_API_BASE) && !one.contains(VAR_APP_BASE), "{one}");
+        assert_eq!(
+            development_objection("https://dms.acme", "https://dms.acme", "https://dms.acme"),
+            None,
+            "a workstation with its own address has nothing to be told here"
+        );
+    }
+
+    #[test]
+    fn the_development_address_is_recognised_however_it_was_written_down() {
+        // The prefill of the address page reaches this report as an ordinary configured address:
+        // the set-up stores what `edms_net::connection::check` returned, and an administrator may
+        // have typed it into a variable in any case at all. Only the comparison here can still
+        // see what it is.
+        assert!(is_development(DEVELOPMENT_BASE), "the constant is its own first case");
+        assert!(is_development("https://dms.dev.elasticdms.com"), "as the set-up stores it");
+        assert!(is_development("HTTPS://DMS.DEV.ELASTICDMS.COM/"), "scheme and host, RFC 3986");
+        assert!(!is_development("https://dms.elasticdms.com"), "a different host entirely");
+        assert!(!is_development("https://dms.dev.elasticdms.com.attacker.example"));
+        assert!(!is_development(""), "and a workstation that has no address has no objection");
     }
 
     #[test]

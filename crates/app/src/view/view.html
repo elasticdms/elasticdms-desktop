@@ -132,9 +132,29 @@
           </div>
         </section>
 
-        <section class="setup-page" data-page="server" data-step="setup.server.step" hidden>
+        <!-- Two names for this step as well, and for the same reason as the two sentences below:
+             a step called "Address" over a page carrying three fields is the list and the page
+             disagreeing (view.js, `stepName`). -->
+        <section class="setup-page" data-page="server" data-step="setup.server.step" data-step-separate="setup.server.step_separate" hidden>
           <h3 data-text="setup.server.title"></h3>
-          <p data-text="setup.server.text"></p>
+          <!-- Two sentences, one page: the one question, and the device whose three addresses
+               were given apart and differ. view.js picks by what the app said, the same way the
+               workstation page picks between its two (ADR-D13, correction of 2026-09-14). -->
+          <p id="setup-server-text" data-text="setup.server.text" data-text-separate="setup.server.text_separate"></p>
+
+          <!-- The one address. Shown when the three are one question; then the three boxes below
+               are not in the page and this field answers for all of them. -->
+          <div class="setup-field" data-field="base" hidden>
+            <label class="setup-label" for="field-base" data-text="setup.server.address"></label>
+            <input class="setup-input" id="field-base" type="text" spellcheck="false" autocapitalize="off" autocomplete="off" />
+            <p class="setup-value" hidden></p>
+            <p class="setup-origin" hidden></p>
+            <p class="setup-hint" data-text="setup.server.address_hint"></p>
+            <!-- Only while the field carries the development address, and it disappears the
+                 moment the user types over it (view.js, `showSuggestion`). -->
+            <p class="setup-development" id="setup-development" data-text="setup.server.development" hidden></p>
+            <p class="setup-wrong" role="alert" hidden></p>
+          </div>
 
           <div class="setup-field" data-field="apiBase">
             <label class="setup-label" for="field-api-base" data-text="setup.server.api"></label>
@@ -210,6 +230,14 @@
             <p class="setup-hint" data-text="setup.code.hint"></p>
             <p class="setup-wrong" role="alert" hidden></p>
           </div>
+          <!-- The one step that cannot be walked past: "Next" stays grey until a code stands in
+               the field, because the sign-in on the next page begins with the enrolment (ADR-D13
+               §5, why page 4 comes before page 5). The two steps that *can* be left unanswered
+               say so (`setup.signin.skip`, `setup.extension.skip`), and this one owes the same
+               honesty the other way round: what becomes of a user whose IT has not handed out a
+               code yet. MEASURED on 2026-09-14, walking the German wizard to its end — a grey
+               "Weiter", and nothing said about it anywhere. -->
+          <p class="setup-hint" data-text="setup.code.skip"></p>
         </section>
 
         <section class="setup-page" data-page="signin" data-step="setup.signin.step" hidden>

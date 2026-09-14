@@ -295,8 +295,22 @@ catalogue_keys! {
     SETUP_WELCOME_COUNTERPART = "setup.welcome.counterpart";
 
     SETUP_SERVER_STEP = "setup.server.step";
+    // The same page under its other shape, in the list of steps: three fields that were
+    // given apart are not "Address" (view.js, `stepName`).
+    SETUP_SERVER_STEP_SEPARATE = "setup.server.step_separate";
     SETUP_SERVER_TITLE = "setup.server.title";
+    // One question, and the sentence for the device that cannot be asked it: since the
+    // correction of 2026-09-14 the page asks for the address once, and shows the three as they
+    // are only where they differ — an administrator who set one variable of the three has said
+    // something the page may not average away (`display::SetupView::one_address`).
     SETUP_SERVER_TEXT = "setup.server.text";
+    SETUP_SERVER_TEXT_SEPARATE = "setup.server.text_separate";
+    SETUP_SERVER_ADDRESS = "setup.server.address";
+    SETUP_SERVER_ADDRESS_HINT = "setup.server.address_hint";
+    // What stands under the field while it carries `setup::DEVELOPMENT_BASE`. It is the one
+    // sentence in this catalogue that exists because the product is unreleased, and it goes with
+    // the constant.
+    SETUP_SERVER_DEVELOPMENT = "setup.server.development";
     SETUP_SERVER_API = "setup.server.api";
     SETUP_SERVER_API_HINT = "setup.server.api_hint";
     SETUP_SERVER_AUTH = "setup.server.auth";
@@ -325,6 +339,8 @@ catalogue_keys! {
     SETUP_CODE_TEXT = "setup.code.text";
     SETUP_CODE_LABEL = "setup.code.label";
     SETUP_CODE_HINT = "setup.code.hint";
+    // The step that cannot be walked past says what happens to whoever has no code yet.
+    SETUP_CODE_SKIP = "setup.code.skip";
 
     SETUP_SIGNIN_STEP = "setup.signin.step";
     SETUP_SIGNIN_TITLE = "setup.signin.title";

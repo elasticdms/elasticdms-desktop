@@ -120,13 +120,23 @@ welcome.counterpart = "Dieses Gerät war zuvor mit einem anderen Server verbunde
 language.de = "Deutsch"
 language.en = "English"
 
-server.step = "Adressen"
+server.step = "Adresse"
+# The step of the other shape of this page (`server.text_separate`): three fields, and a list
+# entry that says so.
+server.step_separate = "Adressen"
 server.title = "Der Server"
-server.text = "Drei Adressen, und Ihre IT hat sie. Keine davon lässt sich aus den anderen ableiten: Das Anmeldegeheimnis geht an die zweite, und geraten wird hier nichts."
+server.text = "Eine Adresse: das Archiv, das Ihre IT betreibt. elasticdms erreicht darüber die Dokumente, die Anmeldung und die Weboberfläche und leitet keinen Teil davon selbst ab."
+# The other shape of this page: the addresses were given separately and are not all the same, so
+# they stand here one by one. Never both sentences at once.
+server.text_separate = "Diesem Gerät wurden seine Adressen einzeln mitgegeben, und sie sind nicht alle gleich. Sie stehen hier so, wie sie mitgegeben wurden — elasticdms leitet keine aus einer anderen ab."
+server.address = "Adresse Ihres Archivs"
+server.address_hint = "Ihre IT hat sie. Es ist die Adresse, unter der Sie das Archiv auch im Browser öffnen."
+# Stands only while the field carries the development address, and goes with it.
+server.development = "Die Adresse, die im Feld steht, ist der Entwicklungsserver von elasticdms. Sie steht dort nur, solange elasticdms nicht freigegeben ist. Sofern Ihnen niemand von elasticdms etwas anderes gesagt hat, ersetzen Sie diese Adresse durch die, die Ihre IT Ihnen gegeben hat."
 server.api = "Dokumente"
 server.api_hint = "Woher die Dokumente kommen."
 server.auth = "Anmeldung"
-server.auth_hint = "Wo Sie sich anmelden. In aller Regel eine andere Adresse als die der Dokumente."
+server.auth_hint = "Wo Sie sich anmelden. Ihre IT kann das getrennt von der Adresse der Dokumente setzen."
 server.app = "Weboberfläche"
 server.app_hint = "Die Weboberfläche Ihres Archivs. Jede Adresse, die der Server diesem Client später anbietet, wird an dieser gemessen."
 
@@ -149,6 +159,9 @@ code.title = "Der Enrollment-Code"
 code.text = "Ihre IT gibt in der elasticdms-Konsole je Arbeitsplatz einen Code aus. Damit registriert sich dieses Gerät ein einziges Mal."
 code.label = "Enrollment-Code"
 code.hint = "Der Code wird einmal verbraucht und nicht gespeichert. Scheitert die Registrierung, geben Sie ihn hier erneut ein."
+# The one step that cannot be walked past — the sign-in begins with the enrolment. What the
+# other two steps say about being skipped, this one has to say about being stopped at.
+code.skip = "Ohne diesen Code kann sich dieses Gerät nicht registrieren. Wenn Sie noch keinen bekommen haben, können Sie hier aufhören: Was Sie bisher eingegeben haben, bleibt stehen, und die Einrichtung fragt Sie beim nächsten Start erneut."
 
 signin.step = "Anmeldung"
 signin.title = "Anmelden"

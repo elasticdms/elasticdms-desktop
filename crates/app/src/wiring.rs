@@ -729,6 +729,21 @@ pub fn view_of(resolution: &Resolution, extension: ExtensionState) -> SetupView 
         api_base: field_of(resolution, Value::ApiBase),
         auth_base: field_of(resolution, Value::AuthBase),
         app_base: field_of(resolution, Value::AppBase),
+        one_address: resolution.one_address(),
+        // Only where the page would otherwise show an empty field: one question, open, and
+        // nothing anywhere to put in it. A workstation that has been told an address — by its
+        // operator or by an earlier walk through this wizard — is never offered ours
+        // (`setup::DEVELOPMENT_BASE`, which says what this is and when it goes).
+        suggested_base: (resolution.one_address()
+            && !resolution.is_fixed(Value::ApiBase)
+            && resolution.text(Value::ApiBase).is_none_or(str::is_empty))
+        .then(|| crate::setup::DEVELOPMENT_BASE.to_owned()),
+        // Unconditionally, because this is not an offer but the address the page has to recognise
+        // under the field — including the one it stored itself one click ago, and including it
+        // written with a slash or in capitals. Where the sentence then stands is the page's
+        // judgement and nobody else's (view.js, `showSuggestion`): only under an open one-address
+        // field that carries exactly this host.
+        development_base: Some(crate::setup::DEVELOPMENT_BASE.to_owned()),
         device_name: field_of(resolution, Value::DeviceName),
         mirror_path: field_of(resolution, Value::MirrorPath),
         language: field_of(resolution, Value::Language),
@@ -1233,8 +1248,8 @@ mod tests {
     use std::collections::HashMap;
 
     use edms_engine::config::{
-        SETTING_API_BASE, SETTING_COMPLETED, SETTING_COUNTERPART_CHANGED, SETTING_DEVICE_NAME,
-        VAR_API_BASE, VAR_APP_BASE, YES,
+        SETTING_API_BASE, SETTING_APP_BASE, SETTING_AUTH_BASE, SETTING_COMPLETED,
+        SETTING_COUNTERPART_CHANGED, SETTING_DEVICE_NAME, VAR_API_BASE, VAR_APP_BASE, YES,
     };
     use edms_engine::session::SETTING_ENROLLED;
 
@@ -1286,6 +1301,68 @@ mod tests {
         assert!(!view.staging_path.is_empty());
         assert!(!view.holding_path.is_empty());
         assert!(view.enrollment_code.value.is_empty(), "never a value, in any state");
+    }
+
+    #[test]
+    fn a_workstation_that_has_been_told_nothing_is_asked_once_and_offered_the_prefill() {
+        // The correction of 2026-09-14, at the seam between the resolution and the page. The
+        // suggestion is the one thing in a view that does not hold anywhere; everything that
+        // makes that bearable is in `setup::DEVELOPMENT_BASE`, and this is where it is handed
+        // over.
+        let view = view_of(&resolution(&HashMap::new(), &HashMap::new()), ExtensionState::Off);
+        assert!(view.one_address, "nothing stands, so one answer would be the truth for three");
+        assert_eq!(view.suggested_base.as_deref(), Some(crate::setup::DEVELOPMENT_BASE));
+        assert!(view.api_base.value.is_empty(), "and it is not a value of this workstation");
+        assert!(view.api_base.is_open() && view.auth_base.is_open() && view.app_base.is_open());
+    }
+
+    #[test]
+    fn a_workstation_that_already_has_an_address_is_never_offered_ours() {
+        // Two devices, one rule: whoever has been told an address — by an administrator or by an
+        // earlier walk through this wizard — is not shown a development server underneath it.
+        let stored = resolution(
+            &HashMap::new(),
+            &map(&[
+                (SETTING_API_BASE, "https://dms.acme"),
+                (SETTING_AUTH_BASE, "https://dms.acme"),
+                (SETTING_APP_BASE, "https://dms.acme"),
+            ]),
+        );
+        let view = view_of(&stored, ExtensionState::Off);
+        assert!(view.one_address, "one host, and the page still asks once");
+        assert_eq!(view.suggested_base, None, "there is something to show already");
+        assert_eq!(view.api_base.value, "https://dms.acme");
+
+        let managed = resolution(&map(&[(VAR_APP_BASE, "https://app.acme")]), &HashMap::new());
+        let view = view_of(&managed, ExtensionState::Off);
+        assert!(!view.one_address, "one of the three came from somewhere else");
+        assert_eq!(view.suggested_base, None, "and nothing is suggested into a page showing three");
+    }
+
+    #[test]
+    fn the_address_the_page_recognises_stands_in_every_view_and_not_only_in_the_offer() {
+        // The Rust half of the repair of 2026-09-14. The offer is made **once**, and only to a
+        // workstation nobody has told an address; the sentence under the field has to stand for
+        // as long as that address stands, and one "Next" later it is an ordinary stored value
+        // with no offer beside it. MEASURED before the repair: "Next", then "Back", and
+        // elasticdms's development server stood in a field labelled "Address of your archive"
+        // with nothing at all underneath.
+        let fresh = view_of(&resolution(&HashMap::new(), &HashMap::new()), ExtensionState::Off);
+        assert_eq!(fresh.development_base.as_deref(), Some(crate::setup::DEVELOPMENT_BASE));
+
+        let ours = "https://dms.dev.elasticdms.com";
+        let stored = resolution(
+            &HashMap::new(),
+            &map(&[(SETTING_API_BASE, ours), (SETTING_AUTH_BASE, ours), (SETTING_APP_BASE, ours)]),
+        );
+        let view = view_of(&stored, ExtensionState::Off);
+        assert_eq!(view.api_base.value, ours, "it is a value of this workstation now");
+        assert_eq!(view.suggested_base, None, "so nothing is offered any more");
+        assert_eq!(
+            view.development_base.as_deref(),
+            Some(crate::setup::DEVELOPMENT_BASE),
+            "and the page can still say what the value in the field is"
+        );
     }
 
     #[test]

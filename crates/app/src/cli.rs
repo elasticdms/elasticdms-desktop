@@ -24,7 +24,8 @@ Usage: elasticdms [--demo[=STATE]] [--window]
   doctor           Shows the state of this workstation and exits. Needs no network;
                    exit code 1 when there is something to complain about.
   --demo           Sample data instead of a server. STATE is signed-in (the default), login,
-                   signed-out, expired, approval, offline or warning.
+                   signed-out, expired, approval, offline, warning or first-run — the last
+                   being a workstation nobody has set up yet, with the set-up it really gets.
   --window         Opens the window right at startup (for screenshots, say).
   --uninstall      Signs the synchronisation root of every profile off and removes mirror and
                    local state (Windows). Starts nothing, asks nothing, needs no EDMS_

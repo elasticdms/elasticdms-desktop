@@ -119,13 +119,23 @@ welcome.counterpart = "This device was pointed at a different server before. The
 language.de = "Deutsch"
 language.en = "English"
 
-server.step = "Addresses"
+server.step = "Address"
+# The step of the other shape of this page (`server.text_separate`): three fields, and a list
+# entry that says so.
+server.step_separate = "Addresses"
 server.title = "The server"
-server.text = "Three addresses, and your IT department has them. None of them can be worked out from the others: the sign-in secret goes to the second one, and nothing here is to be guessed."
+server.text = "One address: the archive your IT department runs. elasticdms reaches the documents, the sign-in and the web interface through it, and guesses no part of it."
+# The other shape of this page: the addresses were given separately and are not all the same, so
+# they stand here one by one. Never both sentences at once.
+server.text_separate = "This device was given its addresses one by one, and they are not all the same. They stand here as they were given — elasticdms fills none of them in from another."
+server.address = "Address of your archive"
+server.address_hint = "Your IT department has it. It is the address at which you also open the archive in a browser."
+# Stands only while the field carries the development address, and goes with it.
+server.development = "The address standing in the field is elasticdms's own development server. It is there only while elasticdms is not released. Unless somebody at elasticdms told you to use it, replace it with the address your IT department gave you."
 server.api = "Documents"
 server.api_hint = "Where the documents come from."
 server.auth = "Sign-in"
-server.auth_hint = "Where you sign in. Usually a different address from the one for the documents."
+server.auth_hint = "Where you sign in. Your IT department can set this apart from the address for the documents."
 server.app = "Web interface"
 server.app_hint = "The web interface of your archive. Every address the server offers this client afterwards is measured against this one."
 
@@ -148,6 +158,9 @@ code.title = "The enrolment code"
 code.text = "Your IT department hands out one code per workstation in the elasticdms console. With it this device registers itself, once."
 code.label = "Enrolment code"
 code.hint = "The code is used once and is not stored. Should the registration fail, you enter it again here."
+# The one step that cannot be walked past — the sign-in begins with the enrolment. What the
+# other two steps say about being skipped, this one has to say about being stopped at.
+code.skip = "Without this code this device cannot register itself. If you have not been given one yet, you can stop here: what you have entered so far stands, and the set-up asks you again at the next start."
 
 signin.step = "Sign in"
 signin.title = "Sign in"

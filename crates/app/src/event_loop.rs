@@ -115,13 +115,28 @@ pub fn start(
     // that into an error there.
     #[cfg_attr(not(target_os = "macos"), allow(unused_mut, reason = "only macOS changes the loop"))]
     let mut event_loop = EventLoopBuilder::<Event>::with_user_event().build();
-    // macOS: no dock icon, no application menu — elasticdms is an accessory of the menu bar
-    // (ADR-D07). Has to happen before the first window.
+    // macOS: no dock icon — elasticdms is an accessory of the menu bar (ADR-D07). Has to happen
+    // before the first window.
     #[cfg(target_os = "macos")]
-    {
+    let application_menu = {
         use tao::platform::macos::{ActivationPolicy, EventLoopExtMacOS};
         event_loop.set_activation_policy(ActivationPolicy::Accessory);
-    }
+        // And one menu after all — an invisible one. An accessory has no menu bar, but AppKit
+        // dispatches Cmd+X, Cmd+C, Cmd+V, Cmd+A and Cmd+Z through the application's main menu all
+        // the same, and without one nothing can be pasted into the wizard's address fields
+        // (`window::edit_menu`, where the measurement stands). A menu that could not be built is
+        // no reason to stop: that leaves the app exactly as it was before this existed.
+        match crate::window::edit_menu() {
+            Ok(menu) => {
+                tracing::debug!("the edit menu is set; the editing keys have somewhere to go.");
+                Some(menu)
+            }
+            Err(error) => {
+                tracing::warn!(%error, "the edit menu could not be built; Cmd+V will do nothing.");
+                None
+            }
+        }
+    };
 
     let messenger = event_loop.create_proxy();
     // muda and tray-icon report from callbacks of their own; without this forwarding the loop
@@ -163,6 +178,8 @@ pub fn start(
         open_setup: true,
         awaiting: waiting_for_setup,
         _guard: guard,
+        #[cfg(target_os = "macos")]
+        _application_menu: application_menu,
     };
 
     event_loop.run(move |event, target, control_flow| {
@@ -201,6 +218,11 @@ struct Control {
     awaiting: bool,
     /// Only held: for as long as it lives, this instance is the only one.
     _guard: Option<Guard>,
+    /// Only held: for as long as it lives, `NSApp.mainMenu` carries the entries the keyboard
+    /// equivalents of cut, copy and paste are dispatched through (`window::edit_menu`). `muda`
+    /// takes its bookkeeping for a menu down when the menu is dropped.
+    #[cfg(target_os = "macos")]
+    _application_menu: Option<tray_icon::menu::Menu>,
 }
 
 impl Control {

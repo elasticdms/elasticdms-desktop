@@ -515,6 +515,20 @@ select.setup-input {
   max-width: 62ch;
 }
 
+/* The development address, said under the field that carries it. Not a refusal — nothing is
+ * wrong — and not an ordinary hint either: it is there only because the product is unreleased,
+ * and it goes with `setup::DEVELOPMENT_BASE`. Set apart like `.setup-happened`, because it is
+ * the same kind of thing: something that happened to this device, not advice. */
+.setup-development {
+  margin: 6px 0 0;
+  padding: 7px 10px;
+  border: 1px solid var(--notice);
+  border-radius: 8px;
+  color: var(--notice);
+  font-size: 12px;
+  max-width: 62ch;
+}
+
 /* The message says what is wrong. The border is the second marker and never the only one — a red
  * border on its own is a colour that says "no" and nothing else. */
 .setup-wrong {

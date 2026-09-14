@@ -195,7 +195,12 @@ Why these, and why in this order:
   `README.txt` *inside* a mirror that does not exist yet.
 * **Page 4 comes before page 5** because the enrolment is the first thing `sign_in` does
   (`place_device_safe`), and a device flow that stops at a missing code would show the user a
-  failure for a value nobody asked them for.
+  failure for a value nobody asked them for. It is therefore also the one step that cannot be
+  walked past, and since 2026-09-14 it says so: `setup.code.skip` tells a user whose IT has not
+  handed out a code yet what happens if they stop here — their answers stand, and the set-up asks
+  again at the next start. The two steps that *can* be left unanswered had that honesty from the
+  first day (`setup.signin.skip`, `setup.extension.skip`); this one was a grey button with nothing
+  said about it, found by walking the German wizard to its end.
 * **Page 6 comes after page 5** because the domain does not exist before the sign-in: `place_ready`
   needs the account identifier, and the engine calls it once the session stands.
 * **The wizard asks for nothing it can work out.** The device name is prefilled from the chain
@@ -492,3 +497,141 @@ session across.
 The same gap exists on macOS wherever a user can edit the launch agent's environment, and there it
 needs `sudo` for `/Library/LaunchAgents` — which is the difference between the two platforms and the
 reason this risk is named for Windows first.
+
+## Correction to §5, §6 and §8 (2026-09-14): one address, asked once — and a development prefill
+
+Two changes, decided by the owner on 2026-09-14. One comes from the product, the other from the
+fact that the product is not released yet. Everything else of this decision stands, §1 above all:
+the environment wins, for every value, without an exception list.
+
+### 1. The wizard asks for the address once, and stores the one answer three times
+
+Page 2 asked for three addresses and said in its own sentence that none of them can be worked out
+from the others. In this product they are one host — the archive an IT department runs — and three
+fields asked a question the user cannot answer three ways.
+
+**The three variables stay, and so do the three settings.** What changed is the question, not the
+configuration: an administrator may still set `EDMS_API_BASE`, `EDMS_AUTH_BASE` and `EDMS_APP_BASE`
+apart, and taking that away would take a capability away from the deployment model this whole ADR
+is built around.
+
+**The one answer is written into all three settings** — `setup.api-base`, `setup.auth-base` and
+`setup.app-base`, through `setup::set_value` three times, one per `Value`, each with the same check
+as before. There is deliberately **no** new setting that the three fall back to, and the argument
+is the one §1 already rests on:
+
+* `setup.rs` has one order with three steps and one door. A shared setting would be a fourth
+  channel between “the setting table” and “the computed default”, and `Origin` — the thing
+  `doctor`'s source column prints — would either have to grow a variant or start answering
+  “setting” while naming a key the value did not come from.
+* `set_value` is per `Value`, and every `Value` has an environment variable
+  (`config.rs`, `every_value_names_a_variable_and_a_purpose`). A shared setting would therefore
+  need either a fourth `EDMS_*` variable — more configuration, in answer to a request for less —
+  or a second writer beside `set_value`, and `set_value` is exactly where “to set it is to fix it”
+  is enforced.
+* Three settings holding one host is not a lie. They are three answers that really are the same
+  answer, because in this deployment they are the same host.
+
+**An administrator who later sets only `EDMS_AUTH_BASE` needs no new rule.** The order decides each
+of the three on its own, exactly as before: the sign-in address is the operator's and is shown
+without a field, the two stored ones stay the user's, `doctor` names the source per value, and §4's
+seal fires if that moves an enrolled device to another server. Only the page changes.
+
+**The page asks once only while the three are indistinguishable** — the same text *through the same
+channel*. The judgement is `setup::Resolution::one_address` and it travels to the page as
+`display::SetupView::one_address`; view.js renders what it is told and makes no judgement of its
+own. The moment the three differ in either way, they stand there as they are: one field per open
+value, one line of text with its origin per fixed one. Two cases make that non-negotiable:
+
+* an administrator who set one variable of three has said something, and a single field would
+  either throw two of their values away or offer to change a value this window cannot change;
+* a managed device whose three addresses really are three hosts must see **three** in the overview
+  of §3. That overview lists what the device was given, and flattening three given values into one
+  line would be the wizard telling its user something untrue about their own machine.
+
+The same channel matters as much as the same text, and the case is easy to miss: `EDMS_API_BASE`
+set to the very string the other two carry as settings is still two different things on the screen
+— a fact with “your IT department has set this for this device” under it, and a field. One field
+claiming to be both would be a field that silently cannot do what it offers.
+
+**This is not the rejected alternative.** *“Asking for one tenant address and deriving the other
+two”* (`api.`, `auth.`, `app.`) stays rejected, and nothing here derives anything: one address is
+asked and that same string is stored three times, so the user reads the value that will be used for
+all three before they press Next. Discovery does not come back either — `03-api-contract-folder-
+client.md` §7.0.4 yields the token, device and revocation endpoints out of the **auth** base and
+yields neither the API base nor the web interface, so §8's refusal to fetch a discovery document is
+untouched.
+
+**What moves in the tables.** §5's page 2 is “the address” rather than “the three addresses”, shown
+under the same condition as before (only if one of the three is open) — and it carries **both**
+names in the list of steps (`setup.server.step`, `setup.server.step_separate`), because a step
+called “Address” over a page with three fields in it is the list and the page contradicting each
+other. §6's first row is unchanged:
+the three keys stay, hold the same thing, and go at the same time.
+
+### 2. A development address in the field, for as long as there is no release
+
+The address field arrives prefilled with `https://dms.dev.elasticdms.com/`
+(`setup::DEVELOPMENT_BASE`). It has to be said plainly what that is: **one company's development
+server written into an open-source client**, put there because the product is not released and its
+first users have no published address to type. It is nobody else's default and there is no
+deployment in which it is the right answer for somebody who is not us.
+
+**It is a prefill, never a value.** Nothing resolves to it. `setup::default_for` still answers
+`None` for the three addresses, `Resolution::configuration` still refuses to build a configuration
+without an answer, `Resolution::missing` still names the three, and `doctor` still prints “not set”.
+It reaches exactly one place — the text standing in the address field when no channel carries an
+address at all (`wiring::view_of`, `suggested_base`) — and it becomes a value of a workstation only
+when a human being stands on that page and presses Next **there**, through the same door as
+anything else they type. That boundary is the whole reason it may exist: the argument `config.rs`'s header makes
+against a quiet fallback — *“a wrongly set-up workstation speaks to the wrong tenant and nobody
+notices, because everything works”* — is about a value the client takes **by itself**, and this is
+not one.
+
+**Prefilled and editable, not merely offered as a hint.** The alternatives were a placeholder (grey
+text that is not submitted) or a “use the development server” link. Both were rejected, and the
+reason is not convenience:
+
+* The owner asked for a prefill, and for our own testers it is the whole point.
+* A placeholder is not a value at any level a user or a screen reader can act on: it disappears on
+  focus, it is announced as an empty field, and the only people it helps are exactly the people who
+  would have typed the address anyway.
+* The dangerous mistake here is not “the user takes the wrong address”, it is “the user takes an
+  address they never read”, and a placeholder does not fix that. A visible value, together with one
+  sentence under the field saying what it is, at least puts the truth in front of the eyes that
+  matter.
+
+**What it still costs, named:** a user who presses Next without reading the field points their
+client at this host, and the client then sends it a device key and an enrolment code. What stops
+that from becoming a working, wrong client is the enrolment one page later: a code from somebody
+else's console does not register a device in our development archive, and §8's argument — *“the
+real check is one page later and it is an authenticated one”* — is what carries the risk. That is
+thin, and it is accepted only for as long as there is no release. Beside it stand two things that
+cost nothing: the sentence `setup.server.development` under the field, in both languages, which
+disappears the moment somebody types over the value; and an objection in `doctor` naming the host
+for as long as a workstation is configured for it, so a support call does not have to guess.
+
+**Both of those sentences were written before they were true** (found in review the same day,
+2026-09-14, by walking the page — not by a test, because nothing in the repository executed one
+line of it):
+
+* The page handed **every** field of the wizard over on **every** “Next”, and the first “Next” is
+  pressed on the overview page. A fresh unmanaged workstation therefore stored this address two
+  pages before the field had been shown to anybody: “only when a human being walks that page” was
+  false, and so was the whole of the paragraph above it. `view.js`'s `typed` now hands the one
+  address over only from the page it stands on, and that is the line the sentence rests on.
+* The warning under the field was tied to the offer of that render and compared byte for byte, so
+  it went out at the very moment the address became real — before anybody had read it — and stayed
+  out after one “Back”. The app now names the address the page has to recognise
+  (`SetupView::development_base`) and `showSuggestion` reads the field itself, folding the trailing
+  slash and ASCII case away exactly as `doctor::is_development` does.
+* And the shape this whole correction is about could not be seen in the application at all:
+  `--demo` pins the managed case. `--demo=first-run` is the unmanaged one, and the walk-through
+  tool writes it as a fourth page (`window::write_setup_preview`).
+
+**What has to happen before a real release.** `setup::DEVELOPMENT_BASE` is deleted, and with it
+`wiring::view_of`'s `suggested_base` and `development_base`, the catalogue sentence
+`setup.server.development`, `doctor`'s objection and the demo state `first-run`. Nothing replaces
+it: the field is empty, which is what every address this client has ever asked for was. The
+constant's own documentation carries this list, so that the person who removes it does not have to
+find the pieces from here.

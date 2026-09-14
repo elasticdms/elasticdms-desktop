@@ -180,6 +180,73 @@ impl Window {
     }
 }
 
+/// The application's menu — **macOS only, and only so that Cmd+V has somewhere to land**.
+///
+/// On macOS the keyboard equivalents of the editing commands do not belong to the text field but
+/// to the application's main menu: a key-down is offered to `[NSApp mainMenu]` for key-equivalent
+/// processing on its way through `NSApplication.sendEvent:`, and nothing else in AppKit turns
+/// Cmd+V into `paste:`.
+/// Until this function existed there was no main menu at all, and the wizard's address fields
+/// could only be typed into — which is how an address arrives from an administrator's mail, and
+/// not how anybody wants to enter it.
+///
+/// **MEASURED on 2026-09-14** in the running app (`--demo --window`, the wizard on its server
+/// page, the field focused, the web view the window's first responder, the window key, an address
+/// on the pasteboard): `NSApp.mainMenu` was nil; a Cmd+V key-down handed to
+/// `NSApplication.sendEvent:` left the field empty; `sendAction:paste: to:nil from:nil` returned
+/// true and filled it with the pasteboard's text. The web view was never the difficulty — there
+/// was nobody to send it `paste:`.
+///
+/// **Why an Edit entry and nothing else.** elasticdms is an accessory of the menu bar
+/// (`ActivationPolicy::Accessory`, ADR-D07), and Apple's own `NSRunningApplication.h` says of that
+/// policy: "The application does not appear in the Dock and does not have a menu bar". This menu
+/// is therefore never drawn. It is a dispatch table, not a surface — which is also why its words
+/// carry no catalogue key: nobody reads them. What stands in it is what a text field needs and
+/// nothing further. No "Quit" in particular: quitting belongs to the entry on the icon, which
+/// stops the source before the loop exits (`event_loop::menu_command`), and `terminate:` would go
+/// round that.
+///
+/// The entries are `muda`'s predefined ones. They carry AppKit's own selectors and none of our
+/// identifiers, so they fire no `MenuEvent` — the handler the icon's menu installed
+/// (`event_loop::start`) keeps every event it had.
+///
+/// **Nothing of this on Windows, and behind a `cfg` rather than an `if` for that reason.** There
+/// the editing keys are WebView2's own business and not an application menu's, and elasticdms
+/// never takes them away from it: `AreBrowserAcceleratorKeysEnabled` is only touched by `wry` when
+/// `with_browser_accelerator_keys(false)` was asked for (wry 0.57, `webview2/mod.rs:649`), and
+/// `Window::open` does not ask. What was **not** measured is the step after that — that WebView2
+/// then really does paste on Ctrl+V. This house has no Windows machine; the Windows target is
+/// compile-checked (`cargo xwin check`) and nothing more. The `cfg` is what makes that
+/// unmeasured step safe: no line of this reaches a Windows build, so it cannot break what works
+/// there today.
+///
+/// The menu has to be **held**: `muda` takes its bookkeeping for this menu down on drop, and the
+/// caller therefore keeps it for as long as the app runs.
+///
+/// # Errors
+///
+/// [`tray_icon::menu::Error`] when the entries cannot be appended. Not a reason to stop: without
+/// this menu the app is what it was yesterday.
+#[cfg(target_os = "macos")]
+pub fn edit_menu() -> Result<tray_icon::menu::Menu, tray_icon::menu::Error> {
+    use tray_icon::menu::{Menu, PredefinedMenuItem, Submenu};
+
+    let edit = Submenu::new("Edit", true);
+    edit.append_items(&[
+        &PredefinedMenuItem::undo(None),
+        &PredefinedMenuItem::redo(None),
+        &PredefinedMenuItem::separator(),
+        &PredefinedMenuItem::cut(None),
+        &PredefinedMenuItem::copy(None),
+        &PredefinedMenuItem::paste(None),
+        &PredefinedMenuItem::select_all(None),
+    ])?;
+    let menu = Menu::new();
+    menu.append(&edit)?;
+    menu.init_for_nsapp();
+    Ok(menu)
+}
+
 /// What the page sent — raw text; it is parsed in [`crate::message`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PageCall(pub String);
@@ -392,6 +459,90 @@ mod tests {
     /// The parts that are put **into** the template. The template itself carries the markers and
     /// is therefore not among them.
     const PUT_IN: [&str; 4] = [STYLE, SCRIPT, EXTENSION_SOURCE, MIRROR_SOURCE];
+
+    /// One function of the page's script, from its `function` line to the brace that closes it.
+    ///
+    /// The file is written with the whole page one level inside its own IIFE, so a function's
+    /// closing brace is the only thing that ever stands alone in a line of two spaces. Reading a
+    /// single function and not the whole file is what makes the two tests below say something: a
+    /// guard that moved out of the function it guards is a guard that is gone.
+    ///
+    /// Line by line, and not over the file as one string: `str::lines` is the one reading that
+    /// says the same thing wherever the tests run. `.gitattributes` pins LF for every checkout,
+    /// and a search for `"\n  }\n"` would have been a test that depends on that pin holding —
+    /// which is the kind of Mac-only assertion this repository has already paid for once.
+    fn function_of(name: &str) -> String {
+        let opening = format!("  function {name}(");
+        let mut body = String::new();
+        for line in SCRIPT.lines().skip_while(|line| !line.starts_with(&opening)) {
+            body.push_str(line);
+            body.push('\n');
+            if line == "  }" {
+                return body;
+            }
+        }
+        panic!("view.js carries no function {name} that is closed at its own indentation");
+    }
+
+    #[test]
+    fn the_one_address_is_handed_over_only_from_the_page_it_stands_on() {
+        // The defect this stands for shipped on 2026-09-14 and was found by hand, in a browser:
+        // `typed` collects the fields of the whole wizard, the first "Next" is pressed on the
+        // overview page, and the one field that can stand there **filled** without anybody having
+        // typed in it is the address (`setup::DEVELOPMENT_BASE`). One click on "Step 1 of 7"
+        // stored elasticdms's own development server as the address of that workstation, two
+        // pages before the field had been shown.
+        //
+        // **What this test is.** Nothing in this workspace executes a line of view.js — there is
+        // no JavaScript engine among the dependencies and no browser in CI — and that is why the
+        // defect got through a green suite. This reads the source of the one function and insists
+        // the guard is inside it: it bites when somebody deletes the guard, which is how the
+        // defect arose, and it cannot tell whether the guard is right. That was measured by hand,
+        // and the measurement stands beside the code in view.js.
+        // The condition that opens the block in which the one answer becomes the three, and not
+        // the function as a whole: a page check standing unused two lines above the block is the
+        // same defect with a variable in front of it.
+        let typed = function_of("typed");
+        let lines: Vec<&str> = typed.lines().collect();
+        let collapse = lines
+            .iter()
+            .position(|line| line.contains("for (const name of ADDRESSES)"))
+            .expect("`typed` answers the three addresses with the one");
+        let guard = lines[..collapse]
+            .iter()
+            .rposition(|line| line.trim_start().starts_with("if ("))
+            .expect("and it does so under a condition");
+        assert!(
+            lines[guard].contains("isOnPage(base)"),
+            "`typed` hands the one address over without asking which page the user is on:\n{}",
+            lines[guard]
+        );
+        // And that the judgement itself is one: a helper that answers `true` would be worse than
+        // none, because the line above would go on reading like a guard.
+        let judging = function_of("isOnPage");
+        assert!(
+            judging.contains("steps[at]") && judging.contains(".page"),
+            "the page is no longer judged by the step the user is standing on:\n{judging}"
+        );
+    }
+
+    #[test]
+    fn the_development_sentence_is_read_from_the_field_and_not_from_the_offer() {
+        // The second half of the same day, and the same kind of proof. The sentence used to be
+        // tied to `suggestedBase` — the offer the app makes only while no channel carries an
+        // address — and compared byte for byte. Both halves switched it off in the ordinary case:
+        // the address was stored on the first Next, so nothing was offered any more, and the
+        // stored spelling (without the trailing slash) did not match the offered one.
+        let showing = function_of("showSuggestion");
+        assert!(
+            showing.contains("setup.developmentBase") && showing.contains("sameAddress("),
+            "the sentence no longer reads the field it is about:\n{showing}"
+        );
+        assert!(
+            !showing.contains("suggestedBase"),
+            "the sentence is tied to the offer again, and goes out with it:\n{showing}"
+        );
+    }
 
     #[test]
     fn no_part_of_the_page_carries_a_placeholder_of_its_own() {
@@ -723,9 +874,14 @@ mod tests {
     ///
     /// It takes the same route as the window — `window::page`, the same `Notice`s, the same
     /// `Notice::as_script` — so that what is walked through is the page the app shows and not a
-    /// drawing of it. Three devices, because they are three different wizards:
+    /// drawing of it. Four devices, because they are four different wizards:
     ///
-    /// * `unmanaged` — nobody has told this workstation anything: every page is a step.
+    /// * `unmanaged` — nobody has told this workstation its addresses, and they were given apart
+    ///   (`--demo`'s own shape): the three fields, one of them an operator's.
+    /// * `first-run` — the device of `--demo=first-run`: the one address field, prefilled with
+    ///   `setup::DEVELOPMENT_BASE`, and the sentence underneath saying what that address is. This
+    ///   one was missing until 2026-09-14, and with it the two defects that were then found in
+    ///   this page by hand.
     /// * `managed` — the operator set all three addresses and the name: the server and workstation
     ///   pages are not steps at all, and their values stand as facts on the first page (§3).
     /// * `extension-on` — the same unmanaged device with the extension already switched on: the
@@ -743,14 +899,16 @@ mod tests {
         use crate::message::StateView;
 
         let catalogue = crate::locale::catalogue();
-        let source =
-            DemoSource::new(crate::demo::now(), DemoState::SignedOut, Path::new("/tmp"), catalogue)
-                .unwrap();
+        let device = |state| {
+            DemoSource::new(crate::demo::now(), state, Path::new("/tmp"), catalogue).unwrap()
+        };
+        let source = device(DemoState::SignedOut);
         let state = source.state();
         let menu = menu_state(&state, FileManager::Finder, catalogue);
         let header = Notice::State { state: Box::new(StateView::from(&state, &menu, catalogue)) };
 
         let unmanaged = source.setup().unwrap();
+        let first_run = device(DemoState::FirstRun).setup().unwrap();
         let mut managed = unmanaged.clone();
         managed.api_base = SetupField::fixed("https://api.elasticdms.example", Fixed::Operator);
         managed.auth_base =
@@ -761,9 +919,12 @@ mod tests {
         let mut switched_on = unmanaged.clone();
         switched_on.extension = ExtensionState::On;
 
-        for (name, view) in
-            [("unmanaged", unmanaged), ("managed", managed), ("extension-on", switched_on)]
-        {
+        for (name, view) in [
+            ("unmanaged", unmanaged),
+            ("first-run", first_run),
+            ("managed", managed),
+            ("extension-on", switched_on),
+        ] {
             let nonce = "preview00000abcd";
             let notice = Notice::Setup { setup: Box::new(view) };
             // The app's half of the round trip, in eight lines. "Next" hands the values over and

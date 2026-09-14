@@ -203,6 +203,42 @@ pub struct SetupView {
     /// The web interface — every address the server offers is measured against it
     /// (`edms_wire::basics::is_below`).
     pub app_base: SetupField,
+    /// Whether the three above are **one** question on this workstation (ADR-D13, correction of
+    /// 2026-09-14).
+    ///
+    /// `true` when they carry the same text through the same channel — then the page shows one
+    /// field, and the one answer travels back in all three of [`SetupValues`]'s address members.
+    /// `false` the moment they differ, and then the page shows the three above as they are: an
+    /// administrator who set only one of the variables has said something the wizard is not
+    /// allowed to average away.
+    ///
+    /// The judgement is made in `crate::setup::Resolution::one_address` and not in the page: the
+    /// page renders what it is told, and the rule has a test on the side that can have one.
+    pub one_address: bool,
+    /// What the one address field stands prefilled with when no channel carries an address at
+    /// all — and `None` whenever one does.
+    ///
+    /// **Never a value that holds.** It is `crate::setup::DEVELOPMENT_BASE`, elasticdms's own
+    /// development server, put there while the product is unreleased; the resolution reports no
+    /// address, the configuration still refuses to be built, and this becomes a setting of this
+    /// workstation only if a human being walks the address page and presses Next there. That
+    /// constant's documentation carries the rest of the argument, including what it costs and
+    /// when it goes.
+    pub suggested_base: Option<String>,
+    /// The address the page recognises under the address field: for as long as the field carries
+    /// it, the sentence `setup.server.development` stands beneath it.
+    ///
+    /// The same constant as above, and a second member all the same, because the two say
+    /// different things. [`Self::suggested_base`] is an offer and is made **once**, to a
+    /// workstation nobody has told an address; this one is a fact about the build and does not go
+    /// away when the offer is taken. Tying the sentence to the offer meant it was never read: the
+    /// address was stored on the first Next, the next view offered nothing any more, and the
+    /// page that finally showed the address showed it as an ordinary value with nothing under it
+    /// (MEASURED on 2026-09-14; view.js, `showSuggestion` carries the measurement).
+    ///
+    /// `None` says this build knows no such address — which is what a released one will say, when
+    /// `crate::setup::DEVELOPMENT_BASE` and this member go together.
+    pub development_base: Option<String>,
     /// The name this workstation shows in the console.
     pub device_name: SetupField,
     /// Where the mirror lies. Windows only — on macOS the root is named by File Provider and
